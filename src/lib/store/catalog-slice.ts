@@ -1,0 +1,99 @@
+/** Model, session, provider, and host catalogs — everything the app reads
+ *  about the harness rather than from a running agent. */
+
+import { bridge, rpc } from "../bridge";
+import { patchWorkspace } from "./runtime-slice";
+import type { CatalogSlice, SliceOf } from "./types";
+
+export const createCatalogSlice: SliceOf<CatalogSlice> = (set, get) => ({
+  models: [],
+  modelsError: null,
+  sessions: [],
+  providers: [],
+  hosts: [],
+
+  async loadModels() {
+    set({ modelsError: null });
+    try {
+      const models = await bridge.models(get().harness);
+      set({ models });
+      // Re-point the selection at the freshly loaded catalog entry, so a
+      // reloaded model list does not leave a stale object selected.
+      const id = get().activeWorkspaceId;
+      const current = get().selectedModel;
+      if (id && current) {
+        patchWorkspace(set, get, id, {
+          selectedModel:
+            models.find((m) => m.provider === current.provider && m.id === current.id) ?? null,
+        });
+      }
+    } catch (e) {
+      set({ modelsError: String(e) });
+    }
+  },
+
+  async selectModel(model) {
+    const id = get().activeWorkspaceId;
+    if (id) patchWorkspace(set, get, id, { selectedModel: model });
+    if (get().runtime && !get().runtime?.exited) {
+      await get().rawCommand(rpc.setModel(model.provider, model.id));
+    }
+  },
+
+  async setThinking(level) {
+    const id = get().activeWorkspaceId;
+    if (id) patchWorkspace(set, get, id, { thinking: level });
+    if (get().runtime && !get().runtime?.exited) {
+      await get().rawCommand(rpc.setThinkingLevel(level));
+    }
+  },
+
+  async refreshSessions() {
+    const sessions = await bridge.sessions(get().harness).catch(() => []);
+    set({ sessions });
+  },
+
+  async deleteSession(path) {
+    await bridge.deleteSession(path);
+    // A deleted session must not linger as a resume target.
+    if (get().selectedSessionPath === path) set({ selectedSessionPath: null });
+    await get().refreshSessions();
+  },
+
+  async loadHosts() {
+    const hosts = await bridge.sshHosts().catch(() => []);
+    set({ hosts });
+  },
+
+  async addHost(alias, destination, port) {
+    await bridge.sshHostAdd(alias, destination, port);
+    await get().loadHosts();
+  },
+
+  async removeHost(alias) {
+    await bridge.sshHostRemove(alias);
+    if (get().target === alias) set({ target: null });
+    await get().loadHosts();
+  },
+
+  async loadProviders() {
+    const providers = await bridge.providers(get().harness).catch(() => []);
+    set({ providers });
+  },
+
+  async saveProvider(id, config) {
+    await bridge.upsertProvider(get().harness, id, config);
+    await get().loadProviders();
+    await get().loadModels();
+  },
+
+  async deleteProvider(id) {
+    await bridge.removeProvider(get().harness, id);
+    await get().loadProviders();
+    await get().loadModels();
+  },
+
+  async testProviderConnection(baseUrl, apiKey) {
+    return bridge.testProvider(baseUrl, apiKey);
+  },
+});

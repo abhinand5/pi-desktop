@@ -1,0 +1,6 @@
+[submodule "local-studio"]
+	path = local-studio
+	url = https://github.com/sybil-solutions/local-studio.git
+[submodule "orca"]
+	path = orca
+	url = https://github.com/stablyai/orca.git

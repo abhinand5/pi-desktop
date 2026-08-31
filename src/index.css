@@ -1,0 +1,189 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────────────────
+   pi-desktop — amber phosphor on graphite.
+
+   Two rules hold the identity together:
+
+   1. One accent, spent on one idea. Amber marks the *live path*: the branch
+      the agent is actually on, the caret that is actually writing, and the
+      action that actually starts work. Teal marks tool execution, green
+      completion, red failure. Everything else is ink. Amber on a decorative
+      border is amber stolen from the thing that needs it.
+
+   2. Mono is machine truth. Ids, paths, model names, token counts, commands,
+      and anything the harness said verbatim are set in JetBrains Mono. Human
+      prose — transcript text, descriptions, empty states — is Inter. The
+      typeface tells you who is speaking.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* Surfaces: cool blue-black, four steps of elevation. */
+  --color-ink-0: #0e1116;
+  --color-ink-1: #141920;
+  --color-ink-2: #1b2129;
+  --color-ink-3: #222a34;
+  --color-line: #232b35;
+  /* A brighter rule for the edges that must read as edges (focus, active). */
+  --color-line-strong: #33404e;
+
+  /* Text: warm greys, three weights of emphasis. */
+  --color-ink-text: #d9dde2;
+  --color-ink-dim: #8a93a0;
+  --color-ink-faint: #5b6470;
+
+  /* The accent. */
+  --color-amber: #e8a33d;
+  --color-amber-dim: #a9762c;
+
+  /* Semantics. */
+  --color-teal: #6fb3c0;
+  --color-green: #7fb685;
+  --color-red: #e06c5f;
+
+  --font-sans: "Inter Variable", "SF Pro Text", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+
+  /* Type scale. Eight sizes, each paired with a line height, replacing the ten
+     unrelated pixel values this file used to leave to each component.
+     `md` is the reading size — the transcript — so every heading sits above it. */
+  --text-2xs: 10px;
+  --text-2xs--line-height: 1.4;
+  --text-xs: 11px;
+  --text-xs--line-height: 1.45;
+  --text-sm: 12px;
+  --text-sm--line-height: 1.5;
+  --text-base: 13px;
+  --text-base--line-height: 1.55;
+  --text-md: 14px;
+  --text-md--line-height: 1.65;
+  --text-ml: 15.5px;
+  --text-ml--line-height: 1.45;
+  --text-lg: 17px;
+  --text-lg--line-height: 1.35;
+  --text-xl: 21px;
+  --text-xl--line-height: 1.25;
+  --text-2xl: 28px;
+  --text-2xl--line-height: 1.1;
+
+  /* Three radii. Small for controls, medium for cards, large for overlays. */
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Control heights, so every button in a row lines up without guessing. */
+  --spacing-control: 28px;
+  --spacing-control-sm: 24px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-ink-0);
+}
+
+body {
+  color: var(--color-ink-text);
+  font-family: var(--font-sans);
+  /* Set here rather than on <html>: Tailwind's spacing scale is rem-based, so
+     shrinking the root font size silently shrinks every margin, padding, and
+     size in the app along with it. */
+  font-size: var(--text-base);
+  -webkit-font-smoothing: antialiased;
+  /* Chrome, not content: the transcript opts back in via .selectable. */
+  user-select: none;
+}
+
+.selectable {
+  user-select: text;
+  cursor: auto;
+}
+
+/* Keyboard users get a visible ring everywhere. The old rule killed outlines
+   on inputs and replaced them with nothing, which left the app unnavigable
+   without a mouse. :focus-visible keeps it off for pointer interaction. */
+:focus-visible {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+textarea:focus-visible,
+input:focus-visible {
+  /* These live inside a field that already draws its own focus border. */
+  outline: none;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-ink-3);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-line-strong);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* A tool call in flight. */
+@keyframes spine-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-teal) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-teal) 12%, transparent);
+  }
+}
+.spine-running {
+  animation: spine-pulse 1.6s ease-in-out infinite;
+}
+
+/* The model is writing right now. Inline, trailing the text it belongs to. */
+@keyframes caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+.streaming-caret {
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--color-amber);
+  animation: caret-blink 1s steps(1) infinite;
+}
+
+/* Row actions appear on hover or when focused from the keyboard — never only
+   on hover, which would hide them from anyone not using a mouse. */
+.row-actions {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.group:hover .row-actions,
+.row-actions:focus-within {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spine-running,
+  .streaming-caret {
+    animation: none;
+  }
+  .row-actions {
+    transition: none;
+  }
+}
