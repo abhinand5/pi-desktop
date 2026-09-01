@@ -3,6 +3,7 @@
 
 import { bridge, rpc } from "../bridge";
 import { patchWorkspace } from "./runtime-slice";
+import { forgetSpeedHistory } from "./speed-history";
 import type { CatalogSlice, SliceOf } from "./types";
 
 export const createCatalogSlice: SliceOf<CatalogSlice> = (set, get) => ({
@@ -18,13 +19,16 @@ export const createCatalogSlice: SliceOf<CatalogSlice> = (set, get) => ({
       const models = await bridge.models(get().harness);
       set({ models });
       // Re-point the selection at the freshly loaded catalog entry, so a
-      // reloaded model list does not leave a stale object selected.
+      // reloaded model list does not leave a stale object selected. A model the
+      // catalog does not list is kept rather than cleared: the harness can be
+      // running one that `get_available_models` never returns, and dropping it
+      // would put the app back to "choose a model" for no reason.
       const id = get().activeWorkspaceId;
       const current = get().selectedModel;
       if (id && current) {
         patchWorkspace(set, get, id, {
           selectedModel:
-            models.find((m) => m.provider === current.provider && m.id === current.id) ?? null,
+            models.find((m) => m.provider === current.provider && m.id === current.id) ?? current,
         });
       }
     } catch (e) {
@@ -51,10 +55,18 @@ export const createCatalogSlice: SliceOf<CatalogSlice> = (set, get) => ({
   async refreshSessions() {
     const sessions = await bridge.sessions(get().harness).catch(() => []);
     set({ sessions });
+
+    const titleByPath = new Map(sessions.map((session) => [session.path, session.name?.trim()]));
+    for (const [id, workspace] of Object.entries(get().workspaces)) {
+      const path = workspace.sessionFile ?? workspace.selectedSessionPath;
+      const title = path ? titleByPath.get(path) : undefined;
+      if (title && title !== workspace.sessionName) patchWorkspace(set, get, id, { sessionName: title });
+    }
   },
 
   async deleteSession(path) {
     await bridge.deleteSession(path);
+    forgetSpeedHistory(path);
     // A deleted session must not linger as a resume target.
     if (get().selectedSessionPath === path) set({ selectedSessionPath: null });
     await get().refreshSessions();

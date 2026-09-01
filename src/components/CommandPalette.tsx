@@ -102,7 +102,7 @@ export default function CommandPalette() {
       onClick={() => setOpen(false)}
     >
       <div
-        className="w-[540px] overflow-hidden rounded-lg border border-line bg-ink-1 shadow-2xl shadow-black/60"
+        className="w-[540px] overflow-hidden rounded-lg border border-line bg-ink-1 overlay"
         onClick={(e) => e.stopPropagation()}
       >
         <input

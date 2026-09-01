@@ -2,11 +2,13 @@ import { useEffect } from "react";
 import Sidebar from "./components/Sidebar";
 import Titlebar from "./components/Titlebar";
 import Transcript from "./components/Transcript";
+import TerminalView from "./components/TerminalView";
 import Composer from "./components/Composer";
 import ReconnectBanner from "./components/ReconnectBanner";
 import ProvidersPanel from "./components/ProvidersPanel";
 import FilesPanel from "./components/FilesPanel";
 import CommandPalette from "./components/CommandPalette";
+import HistoryPanel from "./components/HistoryPanel";
 import TreeRail from "./components/TreeRail";
 import StatusPanel from "./components/StatusPanel";
 import TerminalPanel from "./components/TerminalPanel";
@@ -18,6 +20,7 @@ import { SHORTCUTS, inTextField } from "./lib/shortcuts";
 export default function App() {
   const cwd = useAppStore((s) => s.cwd);
   const route = useAppStore((s) => s.route);
+  const kind = useAppStore((s) => s.kind);
   const runtime = useAppStore((s) => s.runtime);
   const refreshSessions = useAppStore((s) => s.refreshSessions);
   const loadModels = useAppStore((s) => s.loadModels);
@@ -31,10 +34,6 @@ export default function App() {
     void loadModels();
     void loadProviders();
   }, [refreshSessions, loadHosts, loadModels, loadProviders]);
-
-  useEffect(() => {
-    if (started) void loadModels();
-  }, [started, loadModels]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -95,6 +94,8 @@ export default function App() {
             <SettingsPage />
           ) : route === "usage" ? (
             <UsagePage />
+          ) : cwd && kind === "terminal" ? (
+            <TerminalView />
           ) : cwd ? (
             <>
               <ReconnectBanner />
@@ -105,12 +106,13 @@ export default function App() {
             <Welcome />
           )}
         </main>
-        {route === "chat" ? <TreeRail /> : null}
+        {route === "chat" && kind === "chat" ? <TreeRail /> : null}
       </div>
       <ProvidersPanel />
       <FilesPanel />
       <StatusPanel />
       <TerminalPanel />
+      <HistoryPanel />
       <CommandPalette />
     </div>
   );
@@ -137,7 +139,7 @@ function Welcome() {
       </div>
       <button
         onClick={() => void openDialog()}
-        className="h-8 rounded-md bg-amber px-4 font-mono text-sm text-ink-0 hover:brightness-110"
+        className="h-8 rounded-md bg-amber px-4 font-mono text-sm text-on-accent hover:brightness-110"
       >
         Choose a folder
       </button>

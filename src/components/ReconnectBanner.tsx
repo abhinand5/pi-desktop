@@ -1,4 +1,5 @@
 import { useAppStore } from "../lib/agent-store";
+import { columnWidth } from "../lib/layout";
 
 /**
  * What a lost connection means.
@@ -13,6 +14,7 @@ export default function ReconnectBanner() {
   const sessionFile = useAppStore((s) => s.sessionFile);
   const reconnect = useAppStore((s) => s.reconnect);
   const connecting = useAppStore((s) => s.connecting);
+  const wide = useAppStore((s) => s.settings.transcriptWidth === "wide");
 
   if (!runtime?.exited || verdict === null || verdict === "live") return null;
 
@@ -20,7 +22,7 @@ export default function ReconnectBanner() {
 
   return (
     <div
-      className={`mx-auto mt-3 flex w-full max-w-[760px] items-center gap-3 rounded-md border px-3 py-2 ${
+      className={`mx-auto mt-3 flex w-full items-center gap-3 rounded-md border px-3 py-2 ${columnWidth(wide)} ${
         unverifiable ? "border-amber-dim/50 bg-amber/8" : "border-line bg-ink-1"
       }`}
     >
@@ -38,7 +40,7 @@ export default function ReconnectBanner() {
         <button
           onClick={() => void reconnect()}
           disabled={connecting}
-          className="h-control shrink-0 rounded-sm bg-amber px-3 font-mono text-xs text-ink-0 hover:brightness-110 disabled:opacity-40"
+          className="h-control shrink-0 rounded-sm bg-amber px-3 font-mono text-xs text-on-accent hover:brightness-110 disabled:opacity-40"
         >
           {connecting ? "reconnecting…" : "reconnect"}
         </button>

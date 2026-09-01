@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import type { ThinkingPace } from "../lib/store/types";
 
 /**
  * Reasoning, shown as one live line.
@@ -14,16 +15,19 @@ export default function ThinkingStream({
   text,
   streaming,
   display,
+  pace = "readable",
 }: {
   text: string;
   streaming: boolean;
   /** inline = one live line, collapsed = a disclosure, hidden = not shown. */
   display: "inline" | "collapsed" | "hidden";
+  pace?: ThinkingPace;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const inline = display === "inline" && !expanded;
+  const visibleText = usePacedText(text, streaming && inline, pace);
 
   if (display === "hidden" || !text.trim()) return null;
-  const inline = display === "inline" && !expanded;
 
   return (
     <div className="rounded-md border border-line/60 bg-ink-1/40">
@@ -44,7 +48,7 @@ export default function ThinkingStream({
         >
           thinking
         </span>
-        {inline ? <TailLine text={text} streaming={streaming} /> : null}
+        {inline ? <TailLine text={visibleText} streaming={streaming} /> : null}
       </button>
 
       {expanded ? (
@@ -89,4 +93,69 @@ function TailLine({ text, streaming }: { text: string; streaming: boolean }) {
       {streaming ? <span className="ml-1 shrink-0 text-amber-dim">▍</span> : null}
     </span>
   );
+}
+
+const PACE_TICK_MS = 50;
+/** Characters a second the line glides at when the model is slower than this. */
+const PACE_FLOOR: Record<Exclude<ThinkingPace, "instant">, number> = {
+  readable: 48,
+  slow: 24,
+};
+/** The longest the preview may trail the real stream. */
+const MAX_LAG_MS = 1_500;
+
+/**
+ * Reveals streamed thinking on its own clock rather than on the harness's
+ * delta cadence, so the line glides instead of lurching a chunk at a time.
+ *
+ * The floor rate is only a floor: a model that reasons faster than it would
+ * pull the preview ever further behind, so the reveal accelerates with the
+ * backlog and the line stays within `MAX_LAG_MS` of the real tail. Pacing
+ * decides how smoothly the text moves, never how current it is. Text that has
+ * settled — the turn ended, the disclosure opened, the pace is "instant" —
+ * flushes whole.
+ */
+function usePacedText(text: string, active: boolean, pace: ThinkingPace): string {
+  const paced = active && pace !== "instant";
+  const sourceRef = useRef(text);
+  const cursorRef = useRef(paced ? 0 : text.length);
+  const [visible, setVisible] = useState(paced ? "" : text);
+
+  useEffect(() => {
+    sourceRef.current = text;
+    if (!paced) {
+      cursorRef.current = text.length;
+      setVisible(text);
+    }
+  }, [text, paced]);
+
+  useEffect(() => {
+    if (!paced) return;
+    const floor = PACE_FLOOR[pace as Exclude<ThinkingPace, "instant">];
+    // Held on the effect rather than in the state updater: an updater has to
+    // stay pure, and React may call it more than once per commit.
+    let carry = 0;
+
+    const timer = window.setInterval(() => {
+      const target = sourceRef.current;
+      // A fresh thinking block replaces the text outright.
+      const cursor = Math.min(cursorRef.current, target.length);
+      if (cursor >= target.length) {
+        cursorRef.current = cursor;
+        return;
+      }
+      const backlog = target.length - cursor;
+      const rate = Math.max(floor, (backlog * 1_000) / MAX_LAG_MS);
+      carry += (rate * PACE_TICK_MS) / 1_000;
+      const step = Math.floor(carry);
+      if (step < 1) return;
+      carry -= step;
+      cursorRef.current = Math.min(target.length, cursor + step);
+      setVisible(target.slice(0, cursorRef.current));
+    }, PACE_TICK_MS);
+
+    return () => window.clearInterval(timer);
+  }, [paced, pace]);
+
+  return visible;
 }

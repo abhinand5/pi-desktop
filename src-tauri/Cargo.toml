@@ -28,4 +28,6 @@ harness = { version = "0.1.0", path = "../crates/harness" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 tracing.workspace = true
 tauri-plugin-notification = "2.3.3"
+portable-pty = "0.9"
+base64 = "0.22"
 

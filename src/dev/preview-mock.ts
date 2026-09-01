@@ -746,8 +746,125 @@ function dateKey(now: Date, age: number) {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * A scripted pty, enough to check the terminal's look and wiring in a browser.
+ *
+ * It is a toy shell: it echoes what you type, handles backspace and Enter, and
+ * knows two commands. The real one is a `portable-pty` process on the Rust
+ * side, which a browser tab cannot have.
+ */
+const previewPtys = new Map<string, { channel: number; program: string; cwd: string; line: string }>();
+let nextPtyId = 1;
+
+/** The real pty sends bytes; `btoa` takes a Latin-1 string and throws on
+ *  anything above U+00FF, so encode to UTF-8 first as the Rust side does. */
+function ptyOut(id: string, text: string) {
+  const pty = previewPtys.get(id);
+  if (!pty) return;
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  deliver(pty.channel, { type: "output", data: btoa(binary) });
+}
+
+function ptyPrompt(id: string) {
+  const pty = previewPtys.get(id);
+  if (!pty) return;
+  ptyOut(id, `\x1b[38;5;179m${pty.cwd.split("/").pop()}\x1b[0m \x1b[38;5;108m❯\x1b[0m `);
+}
+
+function handlePtyOpen(args: Record<string, unknown>) {
+  const id = `preview-pty-${nextPtyId++}`;
+  const program = typeof args.program === "string" ? args.program : "shell";
+  const cwd = typeof args.cwd === "string" ? args.cwd : SAMPLE_CWD;
+  previewPtys.set(id, { channel: channelId(args.onEvent) ?? -1, program, cwd, line: "" });
+
+  setTimeout(() => {
+    if (program === "shell") {
+      ptyOut(id, "\x1b[2mpreview shell — try `ls` or `help`\x1b[0m\r\n");
+      ptyPrompt(id);
+    } else {
+      ptyOut(
+        id,
+        `\x1b[38;5;179m  ${program === "pi" ? "π" : "◇"} ${program}\x1b[0m \x1b[2m0.83.0\x1b[0m\r\n\r\n` +
+          `\x1b[2m  ${cwd}\x1b[0m\r\n\r\n` +
+          `  \x1b[38;5;108m❯\x1b[0m \x1b[2mDescribe the task…\x1b[0m\r\n`,
+      );
+    }
+  }, 120);
+
+  return { id, program, cwd, host: typeof args.host === "string" ? args.host : null };
+}
+
+function handlePtyWrite(args: Record<string, unknown>) {
+  const id = typeof args.id === "string" ? args.id : "";
+  const pty = previewPtys.get(id);
+  if (!pty) return null;
+  const binary = atob(typeof args.data === "string" ? args.data : "");
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  const text = new TextDecoder().decode(bytes);
+
+  for (const ch of text) {
+    if (ch === "\r") {
+      const line = pty.line.trim();
+      pty.line = "";
+      ptyOut(id, "\r\n");
+      if (line === "help") ptyOut(id, "  ls     list files\r\n  glyphs  Nerd Font and box drawing\r\n  help   this\r\n");
+      else if (line === "ls") ptyOut(id, "\x1b[38;5;110msrc\x1b[0m  \x1b[38;5;110mcrates\x1b[0m  package.json  README.md\r\n");
+      else if (line === "glyphs") {
+        // What a harness TUI actually draws with: private-use Nerd Font icons,
+        // box rules that must join between rows, and solid blocks that must
+        // fill their cell. Wrong font or wrong line height shows here first.
+        // Named, because these live in the private use area and are otherwise
+        // unreadable in source: U+F07B, U+F418, U+F0E7, U+F00C, U+F00D, U+F071,
+        // U+E7A8, U+E628, and the powerline separator U+E0B0.
+        const folder = "";
+        const branch = "";
+        const bolt = "";
+        const check = "";
+        const cross = "";
+        const warn = "";
+        const rust = "";
+        const ts = "";
+        const sep = ""; // powerline separator, drawn to fill the cell
+        ptyOut(
+          id,
+          `  ${folder} src  ${sep}  ${branch} main   ${bolt} build\r\n` +
+            `  \x1b[32m${check} done\x1b[0m  \x1b[31m${cross} fail\x1b[0m  \x1b[33m${warn} warn\x1b[0m  ${rust} rust  ${ts} ts\r\n` +
+            "  ┌────────────┐  ╭────────────╮\r\n" +
+            "  │ box drawing│  │ rounded    │\r\n" +
+            "  └────────────┘  ╰────────────╯\r\n" +
+            "  ███▓▓▓▒▒▒░░░  ▁▂▃▄▅▆▇█\r\n",
+        );
+      }
+      else if (line) ptyOut(id, `\x1b[31mpreview: ${line}: not found\x1b[0m\r\n`);
+      ptyPrompt(id);
+    } else if (ch === "\x7f") {
+      if (pty.line) {
+        pty.line = pty.line.slice(0, -1);
+        ptyOut(id, "\b \b");
+      }
+    } else {
+      pty.line += ch;
+      ptyOut(id, ch);
+    }
+  }
+  return null;
+}
+
 function handleInvoke(command: string, args: Record<string, unknown>): unknown {
   switch (command) {
+    case "pty_open":
+      return handlePtyOpen(args);
+    case "pty_write":
+      return handlePtyWrite(args);
+    case "pty_resize":
+      return null;
+    case "pty_kill":
+      previewPtys.delete(typeof args.id === "string" ? args.id : "");
+      return null;
+    case "ptys_list":
+      return [];
     case "runtime_start":
       return handleRuntimeStart(args);
     case "runtime_request":

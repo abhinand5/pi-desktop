@@ -101,13 +101,19 @@ pub fn summarize(path: &Path, file_cap: u64) -> Result<Option<SessionSummary>> {
     }
 
     let mut name: Option<String> = None;
+    let mut derived_name: Option<String> = None;
     let mut model: Option<String> = None;
     for line in split_lines(&bytes).skip(entries_start) {
         let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) else { continue };
         match v.get("type").and_then(|t| t.as_str()) {
+            Some("message") if derived_name.is_none() => {
+                derived_name = first_user_title(&v);
+            }
+            Some("message") => {}
             Some("session_info") => {
                 if let Some(n) = v.get("name").and_then(|n| n.as_str()) {
-                    name = Some(n.to_string()); // latest wins
+                    let trimmed = n.trim();
+                    name = (!trimmed.is_empty()).then(|| trimmed.to_string());
                 }
             }
             Some("model_change") => {
@@ -118,6 +124,7 @@ pub fn summarize(path: &Path, file_cap: u64) -> Result<Option<SessionSummary>> {
             _ => {}
         }
     }
+    let name = name.or(derived_name);
 
     Ok(Some(SessionSummary {
         path: path.to_path_buf(),
@@ -129,6 +136,32 @@ pub fn summarize(path: &Path, file_cap: u64) -> Result<Option<SessionSummary>> {
         version: header.get("version").and_then(|v| v.as_u64()),
         truncated,
     }))
+}
+
+const SESSION_TITLE_CHARS: usize = 140;
+
+fn first_user_title(entry: &serde_json::Value) -> Option<String> {
+    let message = entry.get("message").or_else(|| entry.get("entry"))?;
+    if message.get("role").and_then(|role| role.as_str()) != Some("user") {
+        return None;
+    }
+
+    let content = match message.get("content") {
+        Some(serde_json::Value::String(text)) => text.clone(),
+        Some(serde_json::Value::Array(blocks)) => blocks
+            .iter()
+            .filter(|block| block.get("type").and_then(|kind| kind.as_str()) == Some("text"))
+            .filter_map(|block| block.get("text").and_then(|text| text.as_str()))
+            .collect::<Vec<_>>()
+            .join(""),
+        _ => String::new(),
+    };
+    let line = content.lines().find(|line| !line.trim().is_empty())?;
+    let flat = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() <= SESSION_TITLE_CHARS {
+        return Some(flat);
+    }
+    Some(format!("{}…", flat.chars().take(SESSION_TITLE_CHARS).collect::<String>()))
 }
 
 /// pi stores split fields (`{"provider":..,"modelId":..}`); omp a single
@@ -217,6 +250,27 @@ mod tests {
         assert_eq!(s.model.as_deref(), Some("anthropic/claude-opus-4-8"));
         assert_eq!(s.version, Some(3));
         assert!(!s.truncated);
+    }
+
+    #[test]
+    fn derives_a_truncated_first_line_when_session_has_no_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sessions").join("proj").join("session.jsonl");
+        let first_line = "x".repeat(180);
+        write(
+            &path,
+            &[
+                r#"{"type":"session","version":3,"id":"019f","cwd":"/home/u/proj"}"#,
+                &format!(
+                    r#"{{"type":"message","id":"m1","message":{{"role":"user","content":"{first_line}\nsecond line"}}}}"#
+                ),
+            ],
+        );
+
+        let summary = summarize(&path, DEFAULT_FILE_CAP).unwrap().unwrap();
+        let expected = format!("{}…", "x".repeat(140));
+
+        assert_eq!(summary.name.as_deref(), Some(expected.as_str()));
     }
 
     #[test]

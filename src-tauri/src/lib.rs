@@ -1,9 +1,11 @@
 //! Pi Desktop — a minimal, SSH-first desktop cockpit for the pi and omp
 //! coding agents.
 
+mod pty;
 mod runtime;
 
 use harness::harness::HarnessId;
+use pty::PtyState;
 use runtime::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -14,6 +16,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init())
         .manage(AppState::default())
+        .manage(PtyState::default())
         .invoke_handler(tauri::generate_handler![
             runtime::runtime_start,
             runtime::runtime_request,
@@ -40,6 +43,11 @@ pub fn run() {
             runtime::git_status,
             runtime::ssh_fs_list,
             runtime::ssh_fs_read,
+            pty::pty_open,
+            pty::pty_write,
+            pty::pty_resize,
+            pty::pty_kill,
+            pty::ptys_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

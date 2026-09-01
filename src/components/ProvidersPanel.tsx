@@ -145,7 +145,7 @@ function EmptyProviders({ onAdd }: { onAdd: () => void }) {
         Add a custom OpenAI-compatible endpoint — local llama.cpp, vLLM, a corporate gateway — and its models appear
         in the picker immediately.
       </p>
-      <button onClick={onAdd} className="h-8 rounded-[8px] bg-amber px-4 font-mono text-[12px] text-ink-0">
+      <button onClick={onAdd} className="h-8 rounded-[8px] bg-amber px-4 font-mono text-[12px] text-on-accent">
         add endpoint
       </button>
     </div>
@@ -306,7 +306,7 @@ function ProviderForm({
         <button
           onClick={() => void submit()}
           disabled={saving}
-          className="ml-auto h-7 rounded-[7px] bg-amber px-4 font-mono text-[11px] text-ink-0 disabled:opacity-40"
+          className="ml-auto h-7 rounded-[7px] bg-amber px-4 font-mono text-[11px] text-on-accent disabled:opacity-40"
         >
           {saving ? "saving…" : "save"}
         </button>

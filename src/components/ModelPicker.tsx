@@ -24,12 +24,35 @@ function useDismiss(open: boolean, close: () => void) {
   return ref;
 }
 
+/**
+ * Which way a popover should open.
+ *
+ * These chips sit with the composer at the bottom of the window, where opening
+ * upward is right, and they are reused on the settings page near the top, where
+ * it puts the panel off-screen. So ask the viewport rather than the call site:
+ * open upward only when there is actually room above.
+ */
+function usePlacement(open: boolean, ref: React.RefObject<HTMLDivElement | null>, height: number) {
+  const [drop, setDrop] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const box = ref.current?.getBoundingClientRect();
+    if (box) setDrop(box.top < height + 16 && window.innerHeight - box.bottom > box.top);
+  }, [open, ref, height]);
+  return drop ? "bottom" : "top";
+}
+
+/** Positions a popover above or below its trigger. */
+function panelSide(place: "top" | "bottom"): string {
+  return place === "top" ? "bottom-full mb-1" : "top-full mt-1";
+}
+
 const TRIGGER =
   "flex h-control-sm items-center gap-1 rounded-sm px-2 font-mono text-2xs text-ink-dim hover:bg-ink-2 hover:text-ink-text";
 
 /** The model in play, and the catalog to change it. Sits with the composer,
  *  where the choice is actually made. */
-export function ModelChip({ align = "right" }: { align?: "left" | "right" }) {
+export function ModelChip() {
   const models = useAppStore((s) => s.models);
   const modelsError = useAppStore((s) => s.modelsError);
   const selected = useAppStore((s) => s.selectedModel);
@@ -39,6 +62,7 @@ export function ModelChip({ align = "right" }: { align?: "left" | "right" }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const ref = useDismiss(open, () => setOpen(false));
+  const place = usePlacement(open, ref, 380);
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -66,9 +90,7 @@ export function ModelChip({ align = "right" }: { align?: "left" | "right" }) {
 
       {open ? (
         <div
-          className={`absolute bottom-full z-50 mb-1 w-[300px] overflow-hidden rounded-lg border border-line bg-ink-1 shadow-2xl shadow-black/60 ${
-            align === "right" ? "right-0" : "left-0"
-          }`}
+          className={`overlay absolute right-0 z-50 w-[300px] overflow-hidden rounded-lg border border-line bg-ink-1 ${panelSide(place)}`}
         >
           <input
             autoFocus
@@ -126,6 +148,7 @@ export function ThinkingChip() {
   const setThinking = useAppStore((s) => s.setThinking);
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
+  const place = usePlacement(open, ref, 200);
 
   const levels = selected?.thinkingLevels?.length ? selected.thinkingLevels : ["off", "low", "medium", "high"];
   if (selected && !selected.reasoning) return null;
@@ -137,7 +160,7 @@ export function ThinkingChip() {
         <ChevronDown size={11} className="text-ink-faint" />
       </button>
       {open ? (
-        <div className="absolute right-0 bottom-full z-50 mb-1 w-[150px] overflow-hidden rounded-lg border border-line bg-ink-1 p-1 shadow-2xl shadow-black/60">
+        <div className={`absolute right-0 z-50 w-[150px] overflow-hidden rounded-lg border border-line bg-ink-1 p-1 overlay ${panelSide(place)}`}>
           {levels.map((level) => (
             <button
               key={level}
@@ -167,6 +190,7 @@ export function TargetChips() {
   const openWorkspace = useAppStore((s) => s.openWorkspace);
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
+  const place = usePlacement(open, ref, 200);
 
   const chooseFolder = async () => {
     const { open: pick } = await import("@tauri-apps/plugin-dialog");
@@ -187,7 +211,7 @@ export function TargetChips() {
           {target ?? "Local"}
         </button>
         {open ? (
-          <div className="absolute bottom-full left-0 z-50 mb-1 w-[180px] overflow-hidden rounded-lg border border-line bg-ink-1 p-1 shadow-2xl shadow-black/60">
+          <div className={`absolute left-0 z-50 w-[180px] overflow-hidden rounded-lg border border-line bg-ink-1 p-1 overlay ${panelSide(place)}`}>
             <button
               onClick={() => {
                 setTarget(null);

@@ -25,6 +25,8 @@ export default function Titlebar() {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const setRoute = useAppStore((s) => s.setRoute);
   const route = useAppStore((s) => s.route);
+  const kind = useAppStore((s) => s.kind);
+  const program = useAppStore((s) => s.program);
 
   const [os, setOs] = useState<string | null>(null);
   useEffect(() => {
@@ -38,21 +40,28 @@ export default function Titlebar() {
 
   const isMac = os === "macos";
   const project = cwd ? (cwd.split("/").filter(Boolean).pop() ?? cwd) : "no project";
-  const state = connecting
-    ? "starting"
-    : runtime === null
-      ? "idle"
-      : runtime.exited
-        ? "exited"
-        : streaming
-          ? "working"
-          : "ready";
+  const terminal = kind === "terminal";
+  // A terminal has no agent to be starting, idle, or working, so it says what
+  // it is instead of borrowing a state that does not apply to it.
+  const state = terminal
+    ? program === "shell"
+      ? "shell"
+      : program
+    : connecting
+      ? "starting"
+      : runtime === null
+        ? "idle"
+        : runtime.exited
+          ? "exited"
+          : streaming
+            ? "working"
+            : "ready";
   const branches = countBranches(tree?.nodes ?? []);
 
   return (
     <header
       data-tauri-drag-region
-      className={`flex h-11 shrink-0 items-center gap-2 border-b border-line bg-ink-1 select-none ${
+      className={`chrome flex h-11 shrink-0 items-center gap-2 border-b border-line bg-ink-1 select-none ${
         isMac ? "pl-[78px]" : "pl-2"
       }`}
     >
@@ -69,12 +78,14 @@ export default function Titlebar() {
       <span className="font-mono text-sm tracking-wide text-amber select-none">π</span>
 
       <span className="flex min-w-0 flex-1 items-baseline gap-2" title={cwd ?? undefined}>
-        <span className="truncate font-mono text-xs text-ink-text">{sessionName || project}</span>
+        <span className="truncate font-mono text-xs text-ink-text">
+          {terminal ? project : sessionName || project}
+        </span>
         <StatusDot state={state} />
         <span className="font-mono text-2xs text-ink-faint">{state}</span>
       </span>
 
-      {branches > 0 ? (
+      {branches > 0 && !terminal ? (
         <button
           onClick={() => togglePanel("tree")}
           aria-pressed={treeOpen}

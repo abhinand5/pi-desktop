@@ -47,13 +47,14 @@ const loaded = new Set<Lang>();
 async function core(): Promise<HighlighterCore> {
   if (!corePromise) {
     corePromise = (async () => {
-      const [{ createHighlighterCore }, { createOnigurumaEngine }, theme] = await Promise.all([
+      const [{ createHighlighterCore }, { createOnigurumaEngine }, dark, light] = await Promise.all([
         import("shiki/core"),
         import("shiki/engine/oniguruma"),
         import("@shikijs/themes/vitesse-dark"),
+        import("@shikijs/themes/vitesse-light"),
       ]);
       return createHighlighterCore({
-        themes: [theme.default],
+        themes: [dark.default, light.default],
         langs: [],
         engine: createOnigurumaEngine(import("shiki/wasm")),
       });
@@ -80,11 +81,14 @@ export async function highlight(code: string, rawLang: string): Promise<string |
       await highlighter.loadLanguage(await LANGS[lang]());
       loaded.add(lang);
     }
+    // Both themes are emitted as custom properties on every token, and CSS
+    // picks one from the palette in play. Highlighted blocks are cached and
+    // long-lived, so choosing here instead would leave every block already on
+    // screen in the old theme's colours after a switch.
     return highlighter.codeToHtml(code, {
       lang,
-      theme: "vitesse-dark",
-      // The page owns the surface colour; the theme only colours the tokens.
-      colorReplacements: { "#121212": "transparent" },
+      themes: { dark: "vitesse-dark", light: "vitesse-light" },
+      defaultColor: false,
     });
   } catch {
     return null;
