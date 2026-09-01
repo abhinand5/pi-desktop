@@ -25,7 +25,7 @@ import type { AppStore } from "./store/types";
 import { project, type Workspace } from "./store/workspace";
 
 export type { AppStore };
-export type { PanelId, Route, SessionStats, Settings, UsageReport, Verdict } from "./store/types";
+export type { PanelId, Route, SessionStats, Settings, ThinkingPace, UsageReport, Verdict } from "./store/types";
 export type { Workspace } from "./store/workspace";
 
 /** Events buffered per workspace, flushed together on the next frame. */
@@ -128,7 +128,14 @@ export const useAppStore = create<AppStore>((set, get) => {
       case "message_end":
         patch((w) => {
           const tracker = settleTurn(w.speedTracker, outputTokensOf(event), performance.now());
-          return { speedTracker: tracker, speed: tracker.sample ?? w.speed };
+          const settled = tracker.sample;
+          return {
+            speedTracker: tracker,
+            speed: settled ?? w.speed,
+            // Only measurable turns join the history — an unmeasured one would
+            // pull the session averages toward nothing.
+            speedHistory: settled?.tokensPerSecond != null ? [...w.speedHistory, settled] : w.speedHistory,
+          };
         });
         break;
 

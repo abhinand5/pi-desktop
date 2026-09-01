@@ -52,7 +52,7 @@ export default function Titlebar() {
   return (
     <header
       data-tauri-drag-region
-      className={`flex h-11 shrink-0 items-center gap-2 border-b border-line bg-ink-1 select-none ${
+      className={`chrome flex h-11 shrink-0 items-center gap-2 border-b border-line bg-ink-1 select-none ${
         isMac ? "pl-[78px]" : "pl-2"
       }`}
     >

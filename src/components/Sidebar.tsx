@@ -2,12 +2,14 @@ import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   BarChart3,
+  ChevronDown,
+  ChevronRight,
   Circle,
   FolderOpen,
+  History as HistoryIcon,
   Loader2,
   Plug,
   Plus,
-  RotateCw,
   Server,
   Trash2,
   X,
@@ -16,7 +18,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type { SessionSummary } from "../lib/agent-state";
 import { bridge } from "../lib/bridge";
 import { useAppStore } from "../lib/agent-store";
-import { projectName, workspaceTitle, type Workspace } from "../lib/store/workspace";
+import { projectName, sessionLabel, shortAge, workspaceTitle, type Workspace } from "../lib/store/workspace";
 
 /**
  * The left rail: your open workspaces, grouped by project.
@@ -51,10 +53,9 @@ function SidebarBody() {
   const setShowAddHost = useAppStore((s) => s.setShowAddHost);
   const removeHost = useAppStore((s) => s.removeHost);
   const setHarness = useAppStore((s) => s.setHarness);
-  const refreshSessions = useAppStore((s) => s.refreshSessions);
   const resumeSession = useAppStore((s) => s.resumeSession);
-  const deleteSession = useAppStore((s) => s.deleteSession);
-  const sessionFile = useAppStore((s) => s.sessionFile);
+  const startRuntime = useAppStore((s) => s.startRuntime);
+  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<Record<string, boolean>>({});
 
   const groups = useMemo(() => {
     const out = new Map<string, Workspace[]>();
@@ -69,13 +70,42 @@ function SidebarBody() {
     return [...out.entries()];
   }, [workspaces, order]);
 
+  /**
+   * The agent's own session files, filed under the project they belong to.
+   *
+   * A workspace is a folder you have open; the sessions in it are the
+   * conversations that folder has had. Showing them in the group is what makes
+   * a remembered workspace worth remembering — you come back to the project and
+   * its past conversations are right there, rather than mixed in with every
+   * other project's in one flat list.
+   */
+  const sessionsByProject = useMemo(() => {
+    const open = new Set<string>();
+    for (const id of order) {
+      const w = workspaces[id];
+      if (w?.sessionFile) open.add(w.sessionFile);
+      if (w?.selectedSessionPath) open.add(w.selectedSessionPath);
+    }
+    const out = new Map<string, SessionSummary[]>();
+    for (const session of sessions) {
+      if (open.has(session.path)) continue;
+      const list = out.get(session.cwd);
+      if (list) list.push(session);
+      else out.set(session.cwd, [session]);
+    }
+    for (const list of out.values()) {
+      list.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
+    }
+    return out;
+  }, [sessions, workspaces, order]);
+
   const chooseFolder = async () => {
     const dir = await open({ directory: true, multiple: false });
     if (typeof dir === "string") openWorkspace({ cwd: dir });
   };
 
   return (
-    <aside className="flex w-[264px] shrink-0 flex-col border-r border-line bg-ink-1">
+    <aside className="chrome flex w-[264px] shrink-0 flex-col border-r border-line bg-ink-1">
       <div className="flex gap-1 px-3 pt-3 pb-1">
         {(["pi", "omp"] as const).map((h) => (
           <button
@@ -101,7 +131,7 @@ function SidebarBody() {
               <MachineButton label={h.alias} active={target === h.alias} onClick={() => setTarget(h.alias)} />
               <button
                 onClick={() => void removeHost(h.alias)}
-                className="absolute -top-1 -right-1 hidden h-4 w-4 items-center justify-center rounded-full bg-red text-ink-0 group-hover:flex"
+                className="absolute -top-1 -right-1 hidden h-4 w-4 items-center justify-center rounded-full bg-red text-on-accent group-hover:flex"
                 aria-label={`Remove ${h.alias}`}
               >
                 <Trash2 size={8} />
@@ -150,59 +180,97 @@ function SidebarBody() {
             Open a folder to begin
           </button>
         ) : (
-          groups.map(([cwd, list]) => (
-            <div key={cwd} className="mb-2">
-              <div className="px-1 pb-0.5 font-mono text-2xs text-ink-faint" title={cwd}>
-                {projectName(cwd)}
+          groups.map(([cwd, list]) => {
+            const project = projectName(cwd);
+            const collapsed = collapsedWorkspaces[cwd] ?? false;
+            return (
+              <div key={cwd} className="mb-2">
+                <div className="flex items-center gap-1 px-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCollapsedWorkspaces((previous) => ({
+                        ...previous,
+                        [cwd]: !collapsed,
+                      }))
+                    }
+                    aria-expanded={!collapsed}
+                    aria-label={`${collapsed ? "Expand" : "Collapse"} workspace ${project}`}
+                    title={cwd}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm py-1 text-left hover:bg-ink-2"
+                  >
+                    {collapsed ? (
+                      <ChevronRight size={12} className="shrink-0 text-ink-faint" />
+                    ) : (
+                      <ChevronDown size={12} className="shrink-0 text-ink-faint" />
+                    )}
+                    <span className="truncate text-sm text-ink-text">{project}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // A second workspace on the folder rather than `newSession`,
+                      // which resets the session in place — a `+` beside a list of
+                      // running sessions must not silently discard one of them.
+                      const first = list[0];
+                      if (!first) return;
+                      openWorkspace({
+                        cwd,
+                        harness: first.harness,
+                        target: first.target,
+                        fresh: true,
+                      });
+                      setRoute("chat");
+                      void startRuntime();
+                    }}
+                    className="shrink-0 rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-ink-text"
+                    aria-label={`New session in workspace ${project}`}
+                    title={`New session in ${project}`}
+                  >
+                    <Plus size={13} />
+                  </button>
+                </div>
+                {!collapsed ? (
+                  <div
+                    role="group"
+                    aria-label={`Sessions in ${project}`}
+                    className="ml-3 border-l border-line/60 pl-2"
+                  >
+                    {list.map((w) => (
+                      <WorkspaceRow
+                        key={w.id}
+                        workspace={w}
+                        active={w.id === activeId && route === "chat"}
+                        onSelect={() => {
+                          activateWorkspace(w.id);
+                          setRoute("chat");
+                        }}
+                        onClose={() => void closeWorkspace(w.id)}
+                      />
+                    ))}
+                    <ProjectSessions
+                      sessions={sessionsByProject.get(cwd) ?? []}
+                      onOpen={(s) => void resumeSession(s)}
+                      onSeeAll={() => setPanel("history")}
+                    />
+                  </div>
+                ) : null}
               </div>
-              {list.map((w) => (
-                <WorkspaceRow
-                  key={w.id}
-                  workspace={w}
-                  active={w.id === activeId && route === "chat"}
-                  onSelect={() => {
-                    activateWorkspace(w.id);
-                    setRoute("chat");
-                  }}
-                  onClose={() => void closeWorkspace(w.id)}
-                />
-              ))}
-            </div>
-          ))
+            );
+          })
         )}
 
-        <div className="mt-1 flex items-center justify-between px-1 pb-1">
-          <span className="font-mono text-2xs tracking-wider text-ink-faint uppercase">history</span>
-          <button
-            onClick={() => void refreshSessions()}
-            className="text-ink-faint hover:text-ink-dim"
-            aria-label="Reload sessions"
-          >
-            <RotateCw size={11} />
-          </button>
-        </div>
-        {sessions.length === 0 ? (
-          <p className="px-1 text-sm text-ink-faint">
-            Past sessions are {harness}'s own files, read from{" "}
-            {harness === "pi" ? "~/.pi/agent" : "~/.omp/agent"}.
-          </p>
-        ) : (
-          [...sessions]
-            .sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""))
-            .slice(0, 30)
-            .map((s) => (
-              <SessionRow
-                key={s.id + s.path}
-                session={s}
-                current={s.path === sessionFile}
-                onResume={() => void resumeSession(s)}
-                onDelete={() => void deleteSession(s.path)}
-              />
-            ))
-        )}
       </div>
 
       <div className="shrink-0 border-t border-line p-2">
+        <button
+          onClick={() => setPanel("history")}
+          className="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm text-ink-dim hover:bg-ink-2 hover:text-ink-text"
+        >
+          <HistoryIcon size={13} className="shrink-0" />
+          <span className="flex-1">History</span>
+          <span className="font-mono text-2xs text-ink-faint">{sessions.length}</span>
+        </button>
         <button
           onClick={() => setRoute("usage")}
           aria-pressed={route === "usage"}
@@ -223,6 +291,49 @@ function SidebarBody() {
         </button>
       </div>
     </aside>
+  );
+}
+
+/** How many of a project's past sessions the rail shows before deferring to
+ *  the history panel. Enough to recognize last week; not a second history. */
+const SESSIONS_PER_PROJECT = 4;
+
+/** A project's past conversations, under its open ones. */
+function ProjectSessions({
+  sessions,
+  onOpen,
+  onSeeAll,
+}: {
+  sessions: SessionSummary[];
+  onOpen: (session: SessionSummary) => void;
+  onSeeAll: () => void;
+}) {
+  const shown = sessions.slice(0, SESSIONS_PER_PROJECT);
+  const rest = sessions.length - shown.length;
+
+  return (
+    <>
+      {shown.map((s) => (
+        <button
+          key={s.id + s.path}
+          onClick={() => onOpen(s)}
+          title={`${s.name ?? s.id}\n${s.path}`}
+          className="flex w-full items-center gap-1.5 rounded-sm px-2 py-1.5 text-left hover:bg-ink-2"
+        >
+          <Circle size={7} className="shrink-0 text-ink-faint/40" aria-label="not open" />
+          <span className="min-w-0 flex-1 truncate text-sm text-ink-dim">{sessionLabel(s)}</span>
+          <span className="shrink-0 font-mono text-2xs text-ink-faint">{shortAge(s.timestamp)}</span>
+        </button>
+      ))}
+      {rest > 0 ? (
+        <button
+          onClick={onSeeAll}
+          className="w-full px-2 py-1 text-left font-mono text-2xs text-ink-faint hover:text-ink-dim"
+        >
+          {rest} more in history
+        </button>
+      ) : null}
+    </>
   );
 }
 
@@ -373,7 +484,7 @@ function AddHostForm({ onDone }: { onDone: () => void }) {
         <button onClick={onDone} className="h-control-sm rounded-sm px-2 font-mono text-2xs text-ink-faint hover:text-ink-dim">
           cancel
         </button>
-        <button onClick={() => void submit()} className="h-control-sm flex-1 rounded-sm bg-amber font-mono text-2xs text-ink-0">
+        <button onClick={() => void submit()} className="h-control-sm flex-1 rounded-sm bg-amber font-mono text-2xs text-on-accent">
           save
         </button>
       </div>
@@ -384,52 +495,6 @@ function AddHostForm({ onDone }: { onDone: () => void }) {
   );
 }
 
-function SessionRow({
-  session,
-  current,
-  onResume,
-  onDelete,
-}: {
-  session: SessionSummary;
-  current: boolean;
-  onResume: () => void;
-  onDelete: () => void;
-}) {
-  const [confirming, setConfirming] = useState(false);
-  const time = session.timestamp?.slice(0, 16).replace("T", " ") ?? "";
-
-  return (
-    <div
-      className={`group flex items-center gap-1 rounded-sm px-1.5 py-1.5 ${current ? "bg-ink-2" : "hover:bg-ink-2/60"}`}
-    >
-      <button onClick={onResume} className="min-w-0 flex-1 text-left" title={`${session.cwd}\n${session.path}`}>
-        <span className="truncate text-sm text-ink-dim">{session.name ?? session.id.slice(0, 12)}</span>
-        <span className="mt-0.5 flex items-baseline gap-1.5 font-mono text-2xs text-ink-faint">
-          <span className="shrink-0 whitespace-nowrap">{time}</span>
-          {session.model ? <span className="min-w-0 truncate">{session.model}</span> : null}
-        </span>
-      </button>
-      {confirming ? (
-        <span className="flex shrink-0 items-center gap-1">
-          <button onClick={onDelete} className="font-mono text-2xs text-red hover:underline">
-            delete
-          </button>
-          <button onClick={() => setConfirming(false)} className="font-mono text-2xs text-ink-faint hover:text-ink-dim">
-            keep
-          </button>
-        </span>
-      ) : (
-        <button
-          onClick={() => setConfirming(true)}
-          aria-label={`Delete ${session.name ?? session.id}`}
-          className="row-actions shrink-0 text-ink-faint hover:text-red"
-        >
-          <Trash2 size={11} />
-        </button>
-      )}
-    </div>
-  );
-}
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (

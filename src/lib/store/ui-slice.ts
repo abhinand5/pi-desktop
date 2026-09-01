@@ -43,8 +43,11 @@ export const createUiSlice: SliceOf<UiSlice> = (set, get) => ({
     if (panel === "providers") void get().loadProviders();
     if (panel === "status") void get().refreshStats();
     if (panel === "tree") void get().refreshTree();
+    if (panel === "history") void get().refreshSessions();
     // Panels belong to the conversation, so opening one leaves any other page.
-    if (panel) set({ route: "chat" });
+    // History is the exception: it is how you *get* to a conversation, and it
+    // is reachable from the settings and usage pages too.
+    if (panel && panel !== "history") set({ route: "chat" });
   },
 
   togglePanel(panel: PanelId) {

@@ -18,13 +18,16 @@ export const createCatalogSlice: SliceOf<CatalogSlice> = (set, get) => ({
       const models = await bridge.models(get().harness);
       set({ models });
       // Re-point the selection at the freshly loaded catalog entry, so a
-      // reloaded model list does not leave a stale object selected.
+      // reloaded model list does not leave a stale object selected. A model the
+      // catalog does not list is kept rather than cleared: the harness can be
+      // running one that `get_available_models` never returns, and dropping it
+      // would put the app back to "choose a model" for no reason.
       const id = get().activeWorkspaceId;
       const current = get().selectedModel;
       if (id && current) {
         patchWorkspace(set, get, id, {
           selectedModel:
-            models.find((m) => m.provider === current.provider && m.id === current.id) ?? null,
+            models.find((m) => m.provider === current.provider && m.id === current.id) ?? current,
         });
       }
     } catch (e) {

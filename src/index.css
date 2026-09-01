@@ -32,9 +32,13 @@
   --color-ink-dim: #8a93a0;
   --color-ink-faint: #5b6470;
 
-  /* The accent. */
+  /* The accent. Named for the default palette, but it is a *role* — the live
+     path — and each theme spends its own colour on it. */
   --color-amber: #e8a33d;
   --color-amber-dim: #a9762c;
+  /* Text and icons that sit on top of an accent fill. Not `ink-0`: that is the
+     app's backdrop, and it is only dark by coincidence of the default theme. */
+  --color-on-accent: #0e1116;
 
   /* Semantics. */
   --color-teal: #6fb3c0;
@@ -76,6 +80,139 @@
   --spacing-control-sm: 24px;
 }
 
+/* ─── Themes ───────────────────────────────────────────────────────────────
+   Every surface, text weight, and accent in the app resolves through the
+   custom properties above, so a theme is a list of overrides and nothing else —
+   no component knows a theme exists. The accent tokens keep their names in
+   every palette because they name a job, not a hue: `amber` is whatever this
+   theme spends on the live path.
+
+   `--shadow-overlay` travels with the palette because a shadow tuned for a
+   near-black ground reads as a smudge on a pale one.
+   ───────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --shadow-overlay: 0 18px 40px -12px rgb(0 0 0 / 0.7);
+}
+
+/* The default palette, repeated from `@theme` above. Tailwind needs the values
+   there to generate the utilities at all, and the settings page needs them
+   behind an attribute so a phosphor swatch can render itself in phosphor while
+   some other theme is active. */
+[data-theme="phosphor"] {
+  --color-ink-0: #0e1116;
+  --color-ink-1: #141920;
+  --color-ink-2: #1b2129;
+  --color-ink-3: #222a34;
+  --color-line: #232b35;
+  --color-line-strong: #33404e;
+  --color-ink-text: #d9dde2;
+  --color-ink-dim: #8a93a0;
+  --color-ink-faint: #5b6470;
+  --color-amber: #e8a33d;
+  --color-amber-dim: #a9762c;
+  --color-on-accent: #0e1116;
+  --color-teal: #6fb3c0;
+  --color-green: #7fb685;
+  --color-red: #e06c5f;
+}
+
+/* Warm charcoal, ember orange. */
+[data-theme="ember"] {
+  --color-ink-0: #14100e;
+  --color-ink-1: #1b1613;
+  --color-ink-2: #241d19;
+  --color-ink-3: #2e2621;
+  --color-line: #2f2621;
+  --color-line-strong: #453931;
+  --color-ink-text: #e4dcd4;
+  --color-ink-dim: #9a8d82;
+  --color-ink-faint: #6b6058;
+  --color-amber: #ef8354;
+  --color-amber-dim: #a85c3a;
+  --color-on-accent: #14100e;
+  --color-teal: #7aa9a3;
+  --color-green: #93b072;
+  --color-red: #d9615a;
+}
+
+/* Deep indigo, periwinkle. */
+[data-theme="nocturne"] {
+  --color-ink-0: #0d0f1a;
+  --color-ink-1: #131725;
+  --color-ink-2: #1a1f30;
+  --color-ink-3: #232941;
+  --color-line: #232941;
+  --color-line-strong: #384061;
+  --color-ink-text: #dcdcf0;
+  --color-ink-dim: #8b90b4;
+  --color-ink-faint: #5c6186;
+  --color-amber: #9d8cff;
+  --color-amber-dim: #6a5cc4;
+  --color-on-accent: #0d0f1a;
+  --color-teal: #63b6d6;
+  --color-green: #74c69d;
+  --color-red: #e4707f;
+}
+
+/* Green-grey, warm lime. */
+[data-theme="moss"] {
+  --color-ink-0: #0f1311;
+  --color-ink-1: #151b18;
+  --color-ink-2: #1c2420;
+  --color-ink-3: #242e29;
+  --color-line: #253029;
+  --color-line-strong: #37463d;
+  --color-ink-text: #d7ded8;
+  --color-ink-dim: #8a9791;
+  --color-ink-faint: #5c6862;
+  --color-amber: #b8c96a;
+  --color-amber-dim: #7f8c47;
+  --color-on-accent: #0f1311;
+  --color-teal: #6cb3ac;
+  --color-green: #8ec07c;
+  --color-red: #d97d6d;
+}
+
+/* Neutral graphite, cool cyan — the quietest of the set. */
+[data-theme="mono"] {
+  --color-ink-0: #101011;
+  --color-ink-1: #17181a;
+  --color-ink-2: #1f2023;
+  --color-ink-3: #292b2e;
+  --color-line: #292b2e;
+  --color-line-strong: #3d4045;
+  --color-ink-text: #dcdcde;
+  --color-ink-dim: #90929a;
+  --color-ink-faint: #626469;
+  --color-amber: #9fd0d8;
+  --color-amber-dim: #6a949c;
+  --color-on-accent: #101011;
+  --color-teal: #a3a7b0;
+  --color-green: #94b39a;
+  --color-red: #cf8079;
+}
+
+/* The one light palette. Warm, so the amber still reads as amber. */
+[data-theme="paper"] {
+  --color-ink-0: #f5f1e9;
+  --color-ink-1: #fffdf9;
+  --color-ink-2: #ece6da;
+  --color-ink-3: #e0d8c8;
+  --color-line: #ded6c6;
+  --color-line-strong: #b3a794;
+  --color-ink-text: #2c2a26;
+  --color-ink-dim: #6b675f;
+  --color-ink-faint: #928d83;
+  --color-amber: #b06f16;
+  --color-amber-dim: #8a5610;
+  --color-on-accent: #fffdf8;
+  --color-teal: #2b7f91;
+  --color-green: #4b7f52;
+  --color-red: #b8453a;
+  --shadow-overlay: 0 12px 30px -10px rgb(90 80 60 / 0.28);
+}
+
 html,
 body,
 #root {
@@ -99,6 +236,61 @@ body {
 .selectable {
   user-select: text;
   cursor: auto;
+}
+
+/* Syntax colours, from shiki's dual-theme output. The page owns the surface,
+   so only the token colour is taken. */
+.shiki,
+.shiki span {
+  background: transparent !important;
+  color: var(--shiki-dark);
+}
+[data-appearance="light"] .shiki,
+[data-appearance="light"] .shiki span {
+  color: var(--shiki-light);
+}
+
+/* ─── Overlays and the optional glass ──────────────────────────────────────
+   `.overlay` is anything that floats over the app — popovers, panels,
+   dialogs. `.chrome` is the fixed furniture around the transcript — titlebar,
+   sidebar, composer. Both are ordinary opaque surfaces until glass is turned
+   on, at which point they thin out and blur what is behind them.
+
+   Glass is deliberately confined to those two. The transcript stays flat and
+   opaque: text is the one thing in this app that must never compete with what
+   is behind it.
+   ───────────────────────────────────────────────────────────────────────── */
+.overlay {
+  box-shadow: var(--shadow-overlay);
+}
+
+/* Opacity high enough that what is behind reads as depth, not as text. A
+   popover you can read the transcript through is a legibility bug wearing a
+   style. */
+[data-glass="on"] .overlay {
+  background: color-mix(in srgb, var(--color-ink-1) 90%, transparent);
+  backdrop-filter: blur(20px) saturate(1.3);
+}
+[data-glass="on"] .chrome {
+  background: color-mix(in srgb, var(--color-ink-1) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(1.25);
+}
+/* Something for the blur to pick up. Without it, glass over a flat fill just
+   looks like a slightly wrong flat fill. */
+[data-glass="on"] body {
+  background-image:
+    radial-gradient(60rem 40rem at 15% -10%, color-mix(in srgb, var(--color-amber) 9%, transparent), transparent 70%),
+    radial-gradient(50rem 36rem at 95% 105%, color-mix(in srgb, var(--color-teal) 8%, transparent), transparent 70%);
+  background-attachment: fixed;
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  /* No blur means no glass — a flat translucent panel over moving text is
+     worse than the opaque one it replaced. */
+  [data-glass="on"] .overlay,
+  [data-glass="on"] .chrome {
+    background: var(--color-ink-1);
+  }
 }
 
 /* Keyboard users get a visible ring everywhere. The old rule killed outlines

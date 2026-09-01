@@ -7,6 +7,7 @@ import ReconnectBanner from "./components/ReconnectBanner";
 import ProvidersPanel from "./components/ProvidersPanel";
 import FilesPanel from "./components/FilesPanel";
 import CommandPalette from "./components/CommandPalette";
+import HistoryPanel from "./components/HistoryPanel";
 import TreeRail from "./components/TreeRail";
 import StatusPanel from "./components/StatusPanel";
 import TerminalPanel from "./components/TerminalPanel";
@@ -111,6 +112,7 @@ export default function App() {
       <FilesPanel />
       <StatusPanel />
       <TerminalPanel />
+      <HistoryPanel />
       <CommandPalette />
     </div>
   );
@@ -137,7 +139,7 @@ function Welcome() {
       </div>
       <button
         onClick={() => void openDialog()}
-        className="h-8 rounded-md bg-amber px-4 font-mono text-sm text-ink-0 hover:brightness-110"
+        className="h-8 rounded-md bg-amber px-4 font-mono text-sm text-on-accent hover:brightness-110"
       >
         Choose a folder
       </button>

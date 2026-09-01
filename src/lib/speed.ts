@@ -105,6 +105,58 @@ function measure(t: SpeedTracker, settled: boolean, outputTokens?: number | null
   };
 }
 
+/** What every settled turn of a session amounted to. */
+export interface SpeedSummary {
+  /** Turns that produced a measurable generation rate. */
+  turns: number;
+  /** Mean and best generation rate across those turns. */
+  meanRate: number | null;
+  bestRate: number | null;
+  /** Median, which a single stalled turn cannot drag around. */
+  medianRate: number | null;
+  /** Mean and best wait before the first token. */
+  meanPromptMs: number | null;
+  bestPromptMs: number | null;
+  /** Output tokens and generation time totalled over the session. */
+  totalTokens: number;
+  totalGenerateMs: number;
+}
+
+/**
+ * Aggregates the settled turns of a session.
+ *
+ * The mean rate is weighted by generation time rather than by turn, so a
+ * two-word answer measured over 200ms does not count as much as a long one —
+ * an unweighted mean of per-turn rates flatters short turns badly.
+ */
+export function summarize(samples: SpeedSample[]): SpeedSummary {
+  const rated = samples.filter(
+    (s): s is SpeedSample & { tokensPerSecond: number; generateMs: number; outputTokens: number } =>
+      s.tokensPerSecond !== null && s.generateMs !== null && s.outputTokens !== null,
+  );
+  const prompts = samples.map((s) => s.promptMs).filter((ms): ms is number => ms !== null);
+
+  const totalTokens = rated.reduce((n, s) => n + s.outputTokens, 0);
+  const totalGenerateMs = rated.reduce((n, s) => n + s.generateMs, 0);
+  const rates = rated.map((s) => s.tokensPerSecond).sort((a, b) => a - b);
+
+  return {
+    turns: rated.length,
+    meanRate: totalGenerateMs > 0 ? (totalTokens * 1000) / totalGenerateMs : null,
+    bestRate: rates.length ? rates[rates.length - 1] : null,
+    medianRate: rates.length ? median(rates) : null,
+    meanPromptMs: prompts.length ? prompts.reduce((a, b) => a + b, 0) / prompts.length : null,
+    bestPromptMs: prompts.length ? Math.min(...prompts) : null,
+    totalTokens,
+    totalGenerateMs,
+  };
+}
+
+function median(sorted: number[]): number {
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 /** "1.2 s" / "340 ms" — a duration read at a glance. */
 export function formatDuration(ms: number | null): string {
   if (ms === null) return "—";

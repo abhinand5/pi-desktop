@@ -28,7 +28,7 @@ export default function StatusPanel() {
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/50 pt-[12vh]" onClick={() => setPanel(null)}>
       <section
-        className="w-[460px] overflow-hidden rounded-lg border border-line bg-ink-1 shadow-2xl shadow-black/60"
+        className="w-[460px] overflow-hidden rounded-lg border border-line bg-ink-1 overlay"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center gap-2 border-b border-line px-4 py-2.5">

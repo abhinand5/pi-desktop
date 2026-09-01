@@ -1,6 +1,6 @@
 import { RotateCcw } from "lucide-react";
 import { useAppStore } from "../lib/agent-store";
-import type { Settings, ThinkingDisplay } from "../lib/store/types";
+import { THEMES, type Settings, type ThinkingDisplay, type ThinkingPace } from "../lib/store/types";
 import { ModelChip, ThinkingChip } from "./ModelPicker";
 
 /**
@@ -34,7 +34,10 @@ export default function SettingsPage() {
 
         <Group title="Agent and model" hint="Applies to the workspace you are in.">
           <Row label="Model" help="Switching mid-session keeps the conversation.">
-            <ModelChip align="left" />
+            {/* Right-aligned so the panel opens back into the card. The chip
+                sits at the card's right edge, and a left-aligned panel would
+                run off it. */}
+            <ModelChip />
           </Row>
           <Row label="Thinking level" help="How much reasoning the model does before answering.">
             <ThinkingChip />
@@ -59,6 +62,52 @@ export default function SettingsPage() {
           </Row>
         </Group>
 
+        <Group title="Appearance">
+          <div className="px-4 py-3">
+            <div className="text-md text-ink-text">Theme</div>
+            <div className="mt-0.5 mb-2.5 text-sm text-ink-faint">
+              Each palette keeps the same one-accent rule — only the colour changes.
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setSetting("theme", t.id)}
+                  aria-pressed={settings.theme === t.id}
+                  className={`flex items-center gap-2 rounded-sm border px-2 py-1.5 text-left ${
+                    settings.theme === t.id
+                      ? "border-amber-dim/60 bg-amber/10"
+                      : "border-line hover:border-line-strong"
+                  }`}
+                >
+                  {/* Painted in its own palette: the swatch carries the theme
+                      attribute, so these are the real colours rather than a
+                      second copy of them kept in TypeScript. */}
+                  <span
+                    data-theme={t.id}
+                    aria-hidden
+                    className="flex h-6 w-6 shrink-0 flex-col overflow-hidden rounded-[4px] border border-line"
+                  >
+                    <span className="flex-1 bg-ink-0" />
+                    <span className="flex-1 bg-ink-2" />
+                    <span className="h-[6px] bg-amber" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm text-ink-text">{t.label}</span>
+                    <span className="block truncate font-mono text-2xs text-ink-faint">{t.hint}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <Toggle
+            label="Frosted chrome"
+            help="Blurs the sidebar, titlebar, and floating panels. The transcript stays opaque so text never competes with what is behind it."
+            checked={settings.glass}
+            onChange={(v) => setSetting("glass", v)}
+          />
+        </Group>
+
         <Group title="Reading" hint="How the transcript behaves while a turn runs.">
           <Row
             label="Thinking"
@@ -72,6 +121,20 @@ export default function SettingsPage() {
                 { value: "hidden", label: "Hidden" },
               ]}
               onChange={(v) => setSetting("thinkingDisplay", v as ThinkingDisplay)}
+            />
+          </Row>
+          <Row
+            label="Thinking pace"
+            help="How smoothly the inline line glides. It never changes model generation speed, and it always catches up to the live tail."
+          >
+            <Segmented
+              value={settings.thinkingPace}
+              options={[
+                { value: "instant", label: "Instant" },
+                { value: "readable", label: "Readable" },
+                { value: "slow", label: "Slow" },
+              ]}
+              onChange={(v) => setSetting("thinkingPace", v as ThinkingPace)}
             />
           </Row>
           <Row label="Reading width" help="How wide the transcript column runs.">
@@ -126,7 +189,10 @@ export default function SettingsPage() {
 
 function Group({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <section className="mb-6 overflow-hidden rounded-lg border border-line bg-ink-1">
+    // No `overflow-hidden`: the rows hold popovers, and clipping them to the
+    // card is what cut the model list off at its edges. The corners round
+    // without it because nothing inside paints to them.
+    <section className="mb-6 rounded-lg border border-line bg-ink-1">
       <header className="border-b border-line px-4 py-2.5">
         <h2 className="text-md font-medium text-ink-text">{title}</h2>
         {hint ? <p className="mt-0.5 text-sm text-ink-faint">{hint}</p> : null}
@@ -178,8 +244,8 @@ function Toggle({
         }`}
       >
         <span
-          className={`absolute top-[2px] left-[2px] h-[16px] w-[16px] rounded-full bg-ink-0 transition-transform ${
-            checked ? "translate-x-[16px]" : "translate-x-0"
+          className={`absolute top-[2px] left-[2px] h-[16px] w-[16px] rounded-full transition-transform ${
+            checked ? "bg-on-accent translate-x-[16px]" : "bg-ink-text/60 translate-x-0"
           }`}
         />
       </button>

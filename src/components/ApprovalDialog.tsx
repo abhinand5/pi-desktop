@@ -92,7 +92,7 @@ function Dialog({
               onClick={() => void onRespond({ value: option })}
               className={
                 i === 0
-                  ? "h-control rounded-sm bg-amber px-3 font-mono text-xs text-ink-0 hover:brightness-110"
+                  ? "h-control rounded-sm bg-amber px-3 font-mono text-xs text-on-accent hover:brightness-110"
                   : "h-control rounded-sm border border-line bg-ink-2 px-3 font-mono text-xs text-ink-text hover:border-line-strong"
               }
             >
@@ -104,7 +104,7 @@ function Dialog({
             <button
               ref={firstAction}
               onClick={() => void onRespond({ confirmed: true })}
-              className="h-control rounded-sm bg-amber px-3 font-mono text-xs text-ink-0 hover:brightness-110"
+              className="h-control rounded-sm bg-amber px-3 font-mono text-xs text-on-accent hover:brightness-110"
             >
               Yes
             </button>
@@ -118,7 +118,7 @@ function Dialog({
         ) : approval.method === "input" || approval.method === "editor" ? (
           <button
             onClick={() => void onRespond({ value: text })}
-            className="h-control rounded-sm bg-amber px-3 font-mono text-xs text-ink-0 hover:brightness-110"
+            className="h-control rounded-sm bg-amber px-3 font-mono text-xs text-on-accent hover:brightness-110"
           >
             Send
           </button>

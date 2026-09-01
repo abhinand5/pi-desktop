@@ -38,7 +38,7 @@ export default function ReconnectBanner() {
         <button
           onClick={() => void reconnect()}
           disabled={connecting}
-          className="h-control shrink-0 rounded-sm bg-amber px-3 font-mono text-xs text-ink-0 hover:brightness-110 disabled:opacity-40"
+          className="h-control shrink-0 rounded-sm bg-amber px-3 font-mono text-xs text-on-accent hover:brightness-110 disabled:opacity-40"
         >
           {connecting ? "reconnecting…" : "reconnect"}
         </button>

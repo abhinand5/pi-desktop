@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { beginTurn, emptyTracker, formatDuration, formatRate, observeDelta, settleTurn } from "./speed";
+import { beginTurn, emptyTracker, formatDuration, formatRate, observeDelta, settleTurn, summarize } from "./speed";
 
 describe("speed tracking", () => {
   it("measures prompt processing as the wait before the first token", () => {
@@ -73,5 +73,42 @@ describe("formatting", () => {
     expect(formatRate(42.36)).toBe("42.4 tok/s");
     expect(formatRate(180.4)).toBe("180 tok/s");
     expect(formatRate(null)).toBe("—");
+  });
+});
+
+describe("session summary", () => {
+  const sample = (tokensPerSecond: number, generateMs: number, promptMs: number) => ({
+    promptMs,
+    tokensPerSecond,
+    generateMs,
+    outputTokens: Math.round((tokensPerSecond * generateMs) / 1000),
+    live: false,
+  });
+
+  it("weights the mean rate by generation time, not by turn", () => {
+    // One long slow turn and one blink-length fast one. An unweighted mean of
+    // the two rates would claim ~305 tok/s for a session that spent almost all
+    // its time at 10.
+    const s = summarize([sample(10, 20_000, 500), sample(600, 200, 500)]);
+    expect(Math.round(s.meanRate!)).toBe(16);
+    expect(s.bestRate).toBe(600);
+    expect(s.medianRate).toBe(305);
+    expect(s.turns).toBe(2);
+  });
+
+  it("keeps prompt waits separate from generation", () => {
+    const s = summarize([sample(50, 1000, 200), sample(50, 1000, 800)]);
+    expect(s.meanPromptMs).toBe(500);
+    expect(s.bestPromptMs).toBe(200);
+    expect(s.totalGenerateMs).toBe(2000);
+    expect(s.totalTokens).toBe(100);
+  });
+
+  it("reports nothing rather than zero when no turn was measurable", () => {
+    const s = summarize([{ promptMs: null, tokensPerSecond: null, outputTokens: null, generateMs: null, live: false }]);
+    expect(s.turns).toBe(0);
+    expect(s.meanRate).toBeNull();
+    expect(s.medianRate).toBeNull();
+    expect(s.meanPromptMs).toBeNull();
   });
 });

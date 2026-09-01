@@ -45,7 +45,7 @@ export default function TerminalPanel() {
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40" onClick={() => setPanel(null)}>
       <section
-        className="flex h-[54vh] w-full max-w-[900px] flex-col overflow-hidden rounded-t-lg border border-line bg-ink-1 shadow-2xl shadow-black/60"
+        className="flex h-[54vh] w-full max-w-[900px] flex-col overflow-hidden rounded-t-lg border border-line bg-ink-1 overlay"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2">

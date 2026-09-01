@@ -29,7 +29,14 @@ export interface RuntimeSlice extends WorkspaceProjection {
   workspaceOrder: string[];
   activeWorkspaceId: string | null;
 
-  openWorkspace(init: { cwd: string; harness?: HarnessId; target?: string | null; sessionPath?: string | null }): string;
+  openWorkspace(init: {
+    cwd: string;
+    harness?: HarnessId;
+    target?: string | null;
+    sessionPath?: string | null;
+    /** Skip the one-workspace-per-folder rule and open a second one anyway. */
+    fresh?: boolean;
+  }): string;
   activateWorkspace(id: string): void;
   closeWorkspace(id: string): Promise<void>;
 
@@ -116,15 +123,40 @@ export interface CommandsSlice {
   loadCommands(): Promise<void>;
 }
 
-export type PanelId = "providers" | "files" | "status" | "terminal" | "tree";
+export type PanelId = "providers" | "files" | "status" | "terminal" | "tree" | "history";
 export type Route = "chat" | "settings" | "usage";
 
 /** How thinking is shown while it streams. Inline is the default: one live
  *  line, so reasoning is visible without opening anything. */
 export type ThinkingDisplay = "inline" | "collapsed" | "hidden";
+/** How smoothly the inline line glides. A floor, not a cap: the reveal
+ *  accelerates to stay level with a fast model rather than falling behind. */
+export type ThinkingPace = "instant" | "readable" | "slow";
+
+/**
+ * The palettes in `index.css`. Adding one is a CSS block plus an entry here.
+ *
+ * `light` is not decoration: syntax highlighting ships both a light and a dark
+ * set of token colours in the same markup, and this is what chooses between
+ * them.
+ */
+export const THEMES = [
+  { id: "phosphor", label: "Phosphor", hint: "Amber on graphite", light: false },
+  { id: "ember", label: "Ember", hint: "Warm charcoal", light: false },
+  { id: "nocturne", label: "Nocturne", hint: "Deep indigo", light: false },
+  { id: "moss", label: "Moss", hint: "Green and lime", light: false },
+  { id: "mono", label: "Mono", hint: "Neutral, quiet", light: false },
+  { id: "paper", label: "Paper", hint: "Light", light: true },
+] as const;
+
+export type ThemeId = (typeof THEMES)[number]["id"];
 
 export interface Settings {
+  theme: ThemeId;
+  /** Frosts the chrome and floating panels. The transcript stays opaque. */
+  glass: boolean;
   thinkingDisplay: ThinkingDisplay;
+  thinkingPace: ThinkingPace;
   /** Tokens per second and prompt-processing time under each turn. */
   showSpeed: boolean;
   /** Follow the stream unless you have scrolled away. */
@@ -139,7 +171,10 @@ export interface Settings {
 }
 
 export const defaultSettings: Settings = {
+  theme: "phosphor",
+  glass: false,
   thinkingDisplay: "inline",
+  thinkingPace: "readable",
   showSpeed: true,
   autoScroll: true,
   notifyOnSettle: true,

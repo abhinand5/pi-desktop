@@ -403,7 +403,7 @@ export default function Composer() {
           e.preventDefault();
           void addFiles(e.dataTransfer.files);
         }}
-        className="rounded-lg border border-line bg-ink-1 px-3 py-2.5 focus-within:border-amber-dim/60"
+        className="chrome rounded-lg border border-line bg-ink-1 px-3 py-2.5 focus-within:border-amber-dim/60"
       >
         <textarea
           ref={ref}
@@ -470,7 +470,7 @@ export default function Composer() {
               <button
                 onClick={() => void submit()}
                 disabled={(!text.trim() && !attachments.length) || !active}
-                className="ml-1 flex h-control w-control items-center justify-center rounded-sm bg-amber text-ink-0 hover:brightness-110 disabled:opacity-25"
+                className="ml-1 flex h-control w-control items-center justify-center rounded-sm bg-amber text-on-accent hover:brightness-110 disabled:opacity-25"
                 aria-label="Send"
               >
                 <ArrowUp size={14} strokeWidth={2.5} />

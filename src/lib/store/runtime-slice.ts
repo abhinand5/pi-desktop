@@ -8,17 +8,67 @@
  */
 
 import { applyEvent } from "../agent-reducer";
-import { initialState, type HarnessEvent } from "../agent-state";
+import { initialState, type HarnessEvent, type ModelInfo } from "../agent-state";
 import { bridge, rpc, type BridgeEvent, type ImageAttachment } from "../bridge";
 import { describeRuntimeError } from "../errors";
 import { emptyTracker } from "../speed";
 import { cancelBridgeCalls } from "./bridge-rpc";
+import { loadWorkspaces, saveWorkspaces } from "./persist";
 import type { AppStore, BashResult, RuntimeSlice, SessionStats, SliceOf } from "./types";
 import { BLANK, createWorkspace, project, type Workspace } from "./workspace";
 
 /** Unwraps `{ data }` from a correlated RPC response. */
 function data<T>(response: unknown): T | undefined {
   return (response as { data?: T } | undefined)?.data;
+}
+
+/** The parts of `get_state` the desktop mirrors. Both harnesses answer it. */
+interface HarnessState {
+  sessionFile?: string;
+  sessionName?: string;
+  thinkingLevel?: string;
+  model?: {
+    id?: string;
+    name?: string;
+    provider?: string;
+    api?: string;
+    baseUrl?: string | null;
+    reasoning?: boolean;
+    input?: string[];
+    contextWindow?: number;
+    maxTokens?: number;
+    thinking?: { efforts?: string[] };
+  };
+}
+
+/**
+ * The harness's current model as a catalog entry.
+ *
+ * Matching the catalog is preferred — it carries the normalized fields the
+ * pickers read — but `get_state` answers before `get_available_models` does,
+ * and a model can be in play without appearing in the catalog at all, so the
+ * reply itself is enough to name what is running.
+ */
+function adoptModel(
+  model: HarnessState["model"],
+  catalog: ModelInfo[],
+): ModelInfo | null {
+  if (!model?.id || !model.provider) return null;
+  const known = catalog.find((m) => m.provider === model.provider && m.id === model.id);
+  if (known) return known;
+  return {
+    provider: model.provider,
+    id: model.id,
+    name: model.name ?? model.id,
+    api: model.api ?? "",
+    baseUrl: model.baseUrl ?? null,
+    reasoning: model.reasoning ?? false,
+    input: model.input ?? [],
+    contextWindow: model.contextWindow ?? 0,
+    maxTokens: model.maxTokens ?? 0,
+    thinkingLevels: model.thinking?.efforts ?? [],
+    selector: null,
+  };
 }
 
 export type Patch = Partial<Workspace> | ((w: Workspace) => Partial<Workspace>);
@@ -43,6 +93,10 @@ export const createRuntimeSlice = (
   const patch = (id: string, p: Patch) => patchWorkspace(set, get, id, p);
   const activeId = () => get().activeWorkspaceId;
 
+  /** Called wherever the *set* of workspaces changes, never on transcript
+   *  traffic — only identity is remembered, and identity does not move. */
+  const remember = () => saveWorkspaces(get());
+
   /** Every start path funnels here, so resume, continue, and reconnect cannot
    *  drift apart. */
   const spawn = async (id: string, overrides: { sessionPath?: string | null; continueLast?: boolean }) => {
@@ -61,6 +115,7 @@ export const createRuntimeSlice = (
       harnessCommands: [],
       stats: null,
       speed: null,
+      speedHistory: [],
       speedTracker: emptyTracker,
       selectedSessionPath: overrides.sessionPath ?? null,
     });
@@ -81,6 +136,9 @@ export const createRuntimeSlice = (
       void get().loadModels();
       void get().loadCommands();
       void get().refreshContext();
+      // Adopts the harness's own model and thinking level, so a new session
+      // opens on whatever the agent is actually configured to use.
+      void get().captureSessionFile();
       await get().replayHistory();
       void get().refreshTree();
     } catch (e) {
@@ -101,15 +159,22 @@ export const createRuntimeSlice = (
     }
   };
 
+  // Last session's workspaces, restored idle. `project` needs whichever was in
+  // front, so the flat fields describe it from the first paint.
+  const restored = loadWorkspaces();
+  const first = restored?.activeWorkspaceId ? restored.workspaces[restored.activeWorkspaceId] : null;
+
   return {
-    workspaces: {},
-    workspaceOrder: [],
-    activeWorkspaceId: null,
-    ...project(BLANK),
+    workspaces: restored?.workspaces ?? {},
+    workspaceOrder: restored?.workspaceOrder ?? [],
+    activeWorkspaceId: restored?.activeWorkspaceId ?? null,
+    ...project(first ?? BLANK),
 
     openWorkspace(init) {
       const s = get();
       // One workspace per folder+machine+agent; asking again just goes there.
+      // Resuming a session, or explicitly asking for a fresh one, opts out —
+      // those are the two ways a folder legitimately holds several at once.
       const existing = s.workspaceOrder
         .map((id) => s.workspaces[id])
         .find(
@@ -117,7 +182,8 @@ export const createRuntimeSlice = (
             w.cwd === init.cwd &&
             w.target === (init.target ?? null) &&
             w.harness === (init.harness ?? s.harness) &&
-            !init.sessionPath,
+            !init.sessionPath &&
+            !init.fresh,
         );
       if (existing) {
         get().activateWorkspace(existing.id);
@@ -137,6 +203,7 @@ export const createRuntimeSlice = (
         activeWorkspaceId: w.id,
         ...project(w),
       });
+      remember();
       void get().refreshSessions();
       return w.id;
     },
@@ -152,6 +219,7 @@ export const createRuntimeSlice = (
         workspaceOrder: [id, ...get().workspaceOrder.filter((x) => x !== id)],
         ...project(cleared),
       });
+      remember();
       if (!cleared.tree) void get().refreshTree();
     },
 
@@ -169,6 +237,7 @@ export const createRuntimeSlice = (
         activeWorkspaceId: nextActive,
         ...project(nextActive ? workspaces[nextActive] : BLANK),
       });
+      remember();
     },
 
     setHarness(harness) {
@@ -319,12 +388,23 @@ export const createRuntimeSlice = (
 
     async captureSessionFile() {
       const id = activeId();
-      const state = data<{ sessionFile?: string; sessionName?: string }>(await request(rpc.getState()));
+      const state = data<HarnessState>(await request(rpc.getState()));
       if (!id || !state) return;
+      // The harness already has a model and a thinking level chosen — its own
+      // config default, or whatever `/model` last set. Adopting them is what
+      // stops the app asking for a choice that was already made; because every
+      // change we make goes out as `set_model` first, what comes back is
+      // always the answer to our own last word.
+      const adopted = adoptModel(state.model, get().models);
       patch(id, (w) => ({
         sessionFile: state.sessionFile ?? w.sessionFile,
         sessionName: state.sessionName ?? w.sessionName,
+        selectedModel: adopted ?? w.selectedModel,
+        thinking: state.thinkingLevel ?? w.thinking,
       }));
+      // The session file and its name only become known here, and they are what
+      // a restored workspace reopens.
+      remember();
     },
 
     async compact(instructions) {
@@ -336,7 +416,14 @@ export const createRuntimeSlice = (
       const id = activeId();
       await request(rpc.newSession());
       if (id) {
-        patch(id, { agent: initialState, tree: null, leafId: null, stats: null, speed: null });
+        patch(id, {
+          agent: initialState,
+          tree: null,
+          leafId: null,
+          stats: null,
+          speed: null,
+          speedHistory: [],
+        });
       }
       void get().captureSessionFile();
       void get().refreshSessions();

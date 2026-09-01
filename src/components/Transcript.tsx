@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown } from "lucide-react";
 import type { Entry } from "../lib/agent-state";
 import { useAppStore } from "../lib/agent-store";
 import { describeTurnError } from "../lib/errors";
@@ -26,29 +27,80 @@ export default function Transcript() {
   const streaming = useAppStore((s) => s.agent.streaming);
   const autoScroll = useAppStore((s) => s.settings.autoScroll);
   const wide = useAppStore((s) => s.settings.transcriptWidth === "wide");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  const lastTop = useRef(0);
+  // Mirrors `pinned` for rendering. The ref is what the scroll handler reads on
+  // every frame; this only changes when the answer flips, so the jump button
+  // appearing costs one render rather than one per scroll event.
+  const [detached, setDetached] = useState(false);
 
   const entryIds = useEntryIds(entries);
 
-  useEffect(() => {
+  const jumpToLatest = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const onScroll = () => {
-      pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    pinned.current = true;
+    setDetached(false);
+    // Left at the current position, not the destination: a smooth scroll
+    // arrives as a run of ordinary scroll events, and a `lastTop` ahead of
+    // them would read every one of those frames as scrolling up.
+    lastTop.current = el.scrollTop;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, []);
 
-  useEffect(() => {
-    if (autoScroll && pinned.current) bottomRef.current?.scrollIntoView({ block: "end" });
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && autoScroll && pinned.current) lastTop.current = scrollToBottom(el);
   }, [entries, streaming, autoScroll]);
 
+  useEffect(() => {
+    const el = scrollRef.current;
+    const content = contentRef.current;
+    if (!el || !content) return;
+
+    // Only scrolling *up* detaches the view. Streaming content grows the page
+    // without moving `scrollTop`, so a distance-from-bottom test on its own
+    // would unpin a reader who never touched anything — and reading direction
+    // instead of guessing at gestures keeps the wheel, the scrollbar, the
+    // keyboard, and touch all on one path.
+    const onScroll = () => {
+      const top = el.scrollTop;
+      const distance = el.scrollHeight - top - el.clientHeight;
+      if (top < lastTop.current - 1) {
+        if (distance > NEAR_BOTTOM) pinned.current = false;
+      } else if (distance <= NEAR_BOTTOM) {
+        pinned.current = true;
+      }
+      lastTop.current = top;
+      setDetached(!pinned.current);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+
+    // Entries change before they finish laying out — code blocks highlight,
+    // tool output expands, images load — so follow the height as well.
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            if (autoScroll && pinned.current) lastTop.current = scrollToBottom(el);
+          });
+    observer?.observe(content);
+
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      observer?.disconnect();
+    };
+  }, [autoScroll]);
+
   return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
-      <div className={`relative mx-auto px-6 pt-6 pb-40 ${wide ? "max-w-[980px]" : "max-w-[760px]"}`}>
+      <div
+        ref={contentRef}
+        className={`relative mx-auto px-6 pt-6 pb-8 ${wide ? "max-w-[980px]" : "max-w-[760px]"}`}
+      >
         {entries.length === 0 ? (
           <EmptyTranscript />
         ) : (
@@ -68,10 +120,36 @@ export default function Transcript() {
             </div>
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
     </div>
+
+      {/* Only while the newest output is off-screen — a permanent button would
+          be a permanent claim that you are missing something. */}
+      {detached && entries.length > 0 ? (
+        <button
+          onClick={jumpToLatest}
+          aria-label="Jump to the latest output"
+          className="absolute bottom-3 left-1/2 z-20 flex h-7 -translate-x-1/2 items-center gap-1.5 rounded-full border border-line-strong bg-ink-2 pr-3 pl-2.5 font-mono text-2xs text-ink-dim overlay hover:text-ink-text"
+        >
+          <ArrowDown size={11} className={streaming ? "text-amber" : ""} />
+          {streaming ? "still writing" : "latest"}
+        </button>
+      ) : null}
+    </div>
   );
+}
+/** How close to the end still counts as reading the newest output. */
+const NEAR_BOTTOM = 48;
+
+/**
+ * Follow the transcript's known scroll container instead of relying on
+ * `scrollIntoView` to choose an ancestor while streaming layout is changing.
+ * Returns the resting position so the scroll handler does not read our own
+ * jump as the reader moving away.
+ */
+function scrollToBottom(el: HTMLElement): number {
+  el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+  return el.scrollTop;
 }
 
 /**
@@ -144,6 +222,7 @@ function SpineNode({ entry }: { entry: Entry }) {
 function EntryBody({ entry, entryId, last }: { entry: Entry; entryId: string | null; last: boolean }) {
   const harness = useAppStore((s) => s.harness);
   const thinkingDisplay = useAppStore((s) => s.settings.thinkingDisplay);
+  const thinkingPace = useAppStore((s) => s.settings.thinkingPace);
   const showSpeed = useAppStore((s) => s.settings.showSpeed);
   const speed = useAppStore((s) => s.speed);
 
@@ -192,6 +271,7 @@ function EntryBody({ entry, entryId, last }: { entry: Entry; entryId: string | n
                   text={block.text}
                   streaming={entry.streaming}
                   display={thinkingDisplay}
+                  pace={thinkingPace}
                 />
               );
             }
@@ -286,6 +366,11 @@ function ErrorNote({ message, harness }: { message: string; harness: "pi" | "omp
 
 function EmptyTranscript() {
   const cwd = useAppStore((s) => s.cwd);
+  const runtime = useAppStore((s) => s.runtime);
+  const connecting = useAppStore((s) => s.connecting);
+  const startRuntime = useAppStore((s) => s.startRuntime);
+  const live = runtime !== null && !runtime.exited;
+
   return (
     <div className="flex flex-col items-center gap-3 pt-24 pb-16 text-center">
       <div className="font-mono text-base text-amber-dim">›_</div>
@@ -294,6 +379,17 @@ function EmptyTranscript() {
         turn stays in the tree.
       </p>
       {cwd ? <p className="font-mono text-xs text-ink-faint">{cwd}</p> : null}
+      {/* The composer is inert until an agent is running, and until now the
+          only way to start one was the command palette. */}
+      {cwd && !live ? (
+        <button
+          onClick={() => void startRuntime()}
+          disabled={connecting}
+          className="mt-1 rounded-sm border border-amber-dim/60 bg-amber/15 px-3 py-1.5 text-sm text-amber hover:bg-amber/25 disabled:opacity-50"
+        >
+          {connecting ? "Starting…" : "Start session"}
+        </button>
+      ) : null}
     </div>
   );
 }
