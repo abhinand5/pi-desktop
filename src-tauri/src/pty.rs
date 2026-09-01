@@ -129,6 +129,9 @@ fn apply_term_env(cmd: &mut CommandBuilder) {
     cmd.env("COLORTERM", "truecolor");
 }
 
+// Keep IPC fields independent so callers can invoke the Tauri command without
+// nesting the PTY request shape; the state and channel are framework inputs.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn pty_open(
     state: State<'_, PtyState>,

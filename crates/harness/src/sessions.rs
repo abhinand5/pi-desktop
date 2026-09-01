@@ -106,11 +106,10 @@ pub fn summarize(path: &Path, file_cap: u64) -> Result<Option<SessionSummary>> {
     for line in split_lines(&bytes).skip(entries_start) {
         let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) else { continue };
         match v.get("type").and_then(|t| t.as_str()) {
-            Some("message") => {
-                if derived_name.is_none() {
-                    derived_name = first_user_title(&v);
-                }
+            Some("message") if derived_name.is_none() => {
+                derived_name = first_user_title(&v);
             }
+            Some("message") => {}
             Some("session_info") => {
                 if let Some(n) = v.get("name").and_then(|n| n.as_str()) {
                     let trimmed = n.trim();

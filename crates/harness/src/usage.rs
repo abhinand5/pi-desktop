@@ -92,7 +92,7 @@ pub fn report(harness: &dyn Harness, since_days: Option<u32>) -> Result<UsageRep
 
     // The window is applied to entry dates, not file names: a long-running
     // session started before the cutoff still has recent turns in it.
-    let cutoff = since_days.and_then(|d| cutoff_date(d));
+    let cutoff = since_days.and_then(cutoff_date);
 
     for file in files {
         let Ok(bytes) = read_capped(&file, FILE_CAP) else { continue };
