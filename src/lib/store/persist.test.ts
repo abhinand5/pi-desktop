@@ -16,6 +16,7 @@ function installLocalStorage() {
 
 function state(workspaces: Workspace[], activeIndex = 0) {
   return {
+    projects: Object.fromEntries(workspaces.map((w) => [w.cwd, { cwd: w.cwd, archived: false }])),
     workspaces: Object.fromEntries(workspaces.map((w) => [w.id, w])),
     workspaceOrder: workspaces.map((w) => w.id),
     activeWorkspaceId: workspaces[activeIndex]?.id ?? null,
@@ -41,6 +42,19 @@ describe("remembered workspaces", () => {
     expect(order[1].harness).toBe("pi");
     expect(order[1].target).toBe("build-box");
     expect(restored.activeWorkspaceId).toBe(order[1].id);
+  });
+
+  it("remembers an archived project with no open session tabs", () => {
+    const archived = { cwd: "/home/me/old-project", archived: true };
+
+    saveWorkspaces({
+      projects: { [archived.cwd]: archived },
+      workspaces: {},
+      workspaceOrder: [],
+      activeWorkspaceId: null,
+    });
+
+    expect(loadWorkspaces()).toMatchObject({ projects: { [archived.cwd]: archived } });
   });
 
   it("comes back idle — a stored runtime would point at a process that is gone", () => {

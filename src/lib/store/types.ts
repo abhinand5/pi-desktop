@@ -9,6 +9,7 @@
 import type { ModelInfo, SessionSummary } from "../agent-state";
 import type {
   HarnessId,
+  PtyProgram,
   HostEntry,
   ImageAttachment,
   ProviderConfig,
@@ -17,13 +18,15 @@ import type {
   SessionTree,
   TreeNode,
 } from "../bridge";
-import type { Workspace, WorkspaceProjection } from "./workspace";
+import type { ProjectWorkspace, Workspace, WorkspaceKind, WorkspaceProjection } from "./workspace";
 
 /** Remote-session verdict after contact loss (orca-style semantics). */
 export type Verdict = "live" | "unverifiable" | "exited" | null;
 
 export interface RuntimeSlice extends WorkspaceProjection {
-  /** Every open workspace, live or idle, keyed by id. */
+  /** Folder-level workspaces, independent of the session tabs inside them. */
+  projects: Record<string, ProjectWorkspace>;
+  /** Every open session workspace, live or idle, keyed by id. */
   workspaces: Record<string, Workspace>;
   /** Sidebar order — most recently used first. */
   workspaceOrder: string[];
@@ -36,9 +39,21 @@ export interface RuntimeSlice extends WorkspaceProjection {
     sessionPath?: string | null;
     /** Skip the one-workspace-per-folder rule and open a second one anyway. */
     fresh?: boolean;
+    kind?: WorkspaceKind;
+    program?: PtyProgram;
   }): string;
+  /** A terminal in a folder. Always its own workspace — you open a second
+   *  terminal because you want a second terminal. */
+  openTerminal(init: { cwd: string; program: PtyProgram; target?: string | null }): string;
   activateWorkspace(id: string): void;
+  /** Closes one session tab while preserving the project and session file. */
   closeWorkspace(id: string): Promise<void>;
+  /** Hides a folder workspace and closes all of its session tabs. */
+  archiveProject(cwd: string): Promise<void>;
+  /** Removes a folder workspace from the app without touching its files. */
+  deleteProject(cwd: string): Promise<void>;
+  /** Makes an archived folder workspace visible again. */
+  restoreProject(cwd: string): void;
 
   setHarness(harness: HarnessId): void;
   setCwd(cwd: string): void;
@@ -153,6 +168,9 @@ export type ThemeId = (typeof THEMES)[number]["id"];
 
 export interface Settings {
   theme: ThemeId;
+  /** Overrides the terminal's font stack. Empty means the built-in one, which
+   *  already prefers a Nerd Font Mono so TUI glyphs render. */
+  terminalFont: string;
   /** Frosts the chrome and floating panels. The transcript stays opaque. */
   glass: boolean;
   thinkingDisplay: ThinkingDisplay;
@@ -172,6 +190,7 @@ export interface Settings {
 
 export const defaultSettings: Settings = {
   theme: "phosphor",
+  terminalFont: "",
   glass: false,
   thinkingDisplay: "inline",
   thinkingPace: "readable",

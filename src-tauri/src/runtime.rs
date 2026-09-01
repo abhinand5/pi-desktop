@@ -162,14 +162,7 @@ pub async fn runtime_start(
     let mut proxy: Option<harness::proxy::EgressProxy> = None;
     let remote_entry = match &host {
         None => None,
-        Some(alias) => Some(
-            ssh::load_registry(&data_dir(&app))
-                .hosts
-                .iter()
-                .find(|h| h.alias == *alias)
-                .ok_or_else(|| format!("unknown ssh host: {alias}"))?
-                .clone(),
-        ),
+        Some(alias) => Some(ssh_host(&app, alias)?),
     };
 
     // A local path means nothing on the far side, so ship the bridge across
@@ -790,6 +783,16 @@ fn data_dir(app: &tauri::AppHandle) -> PathBuf {
 #[tauri::command]
 pub fn ssh_hosts_list(app: tauri::AppHandle) -> Vec<ssh::HostEntry> {
     ssh::load_registry(&data_dir(&app)).hosts
+}
+
+/// One registered host by alias. Shared with the terminal, which reaches a
+/// remote the same way the agent does.
+pub fn ssh_host(app: &tauri::AppHandle, alias: &str) -> Result<ssh::HostEntry, String> {
+    ssh::load_registry(&data_dir(app))
+        .hosts
+        .into_iter()
+        .find(|h| h.alias == alias)
+        .ok_or_else(|| format!("unknown ssh host: {alias}"))
 }
 
 #[tauri::command]

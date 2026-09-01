@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, Loader2 } from "lucide-react";
 import type { Entry } from "../lib/agent-state";
 import { useAppStore } from "../lib/agent-store";
 import { describeTurnError } from "../lib/errors";
@@ -8,6 +8,8 @@ import Markdown from "./Markdown";
 import ToolCard from "./ToolCard";
 import ThinkingStream from "./ThinkingStream";
 import { formatDuration, formatRate } from "../lib/speed";
+import { columnWidth } from "../lib/layout";
+import { projectName } from "../lib/store/workspace";
 import {
   AssistantMessageActions,
   BranchChip,
@@ -96,10 +98,10 @@ export default function Transcript() {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-    <div ref={scrollRef} className="flex-1 overflow-y-auto">
+    <div ref={scrollRef} data-transcript className="flex-1 overflow-y-auto">
       <div
         ref={contentRef}
-        className={`relative mx-auto px-6 pt-6 pb-8 ${wide ? "max-w-[980px]" : "max-w-[760px]"}`}
+        className={`relative mx-auto px-6 pt-6 pb-8 ${columnWidth(wide)}`}
       >
         {entries.length === 0 ? (
           <EmptyTranscript />
@@ -364,12 +366,36 @@ function ErrorNote({ message, harness }: { message: string; harness: "pi" | "omp
   );
 }
 
+/**
+ * Before the first turn: what is happening, or what to do next.
+ *
+ * Opening a workspace starts its agent, so the usual state here is waiting for
+ * one to come up. That wait is real — the harness loads its config, its
+ * extensions, and its model — and saying so is better than an empty page that
+ * looks broken. The button is only for the cases the app will not start on its
+ * own: a session that exited, or one whose last start failed.
+ */
 function EmptyTranscript() {
   const cwd = useAppStore((s) => s.cwd);
+  const harness = useAppStore((s) => s.harness);
   const runtime = useAppStore((s) => s.runtime);
   const connecting = useAppStore((s) => s.connecting);
   const startRuntime = useAppStore((s) => s.startRuntime);
   const live = runtime !== null && !runtime.exited;
+
+  if (cwd && connecting) {
+    return (
+      <div className="flex flex-col items-center gap-3 pt-24 pb-16 text-center">
+        <Loader2 size={16} className="animate-spin text-amber-dim" aria-hidden />
+        <p className="text-md text-ink-dim">
+          Starting {harness} in <span className="font-mono text-ink-text">{projectName(cwd)}</span>…
+        </p>
+        <p className="max-w-[380px] text-sm text-ink-faint">
+          Loading its configuration, extensions, and model. This takes a few seconds.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center gap-3 pt-24 pb-16 text-center">
@@ -379,15 +405,12 @@ function EmptyTranscript() {
         turn stays in the tree.
       </p>
       {cwd ? <p className="font-mono text-xs text-ink-faint">{cwd}</p> : null}
-      {/* The composer is inert until an agent is running, and until now the
-          only way to start one was the command palette. */}
       {cwd && !live ? (
         <button
           onClick={() => void startRuntime()}
-          disabled={connecting}
-          className="mt-1 rounded-sm border border-amber-dim/60 bg-amber/15 px-3 py-1.5 text-sm text-amber hover:bg-amber/25 disabled:opacity-50"
+          className="mt-1 rounded-sm border border-amber-dim/60 bg-amber/15 px-3 py-1.5 text-sm text-amber hover:bg-amber/25"
         >
-          {connecting ? "Starting…" : "Start session"}
+          Start session
         </button>
       ) : null}
     </div>

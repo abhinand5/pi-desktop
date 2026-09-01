@@ -13,6 +13,7 @@ import {
 import { nearestUserEntry } from "../lib/tree";
 import ApprovalDialog from "./ApprovalDialog";
 import ComposerStatusBar from "./ComposerStatusBar";
+import { columnWidth } from "../lib/layout";
 import { ModelChip, TargetChips, ThinkingChip } from "./ModelPicker";
 
 const MAX_HISTORY = 50;
@@ -33,9 +34,11 @@ interface Attachment extends ImageAttachment {
  */
 export default function Composer() {
   const runtime = useAppStore((s) => s.runtime);
+  const wide = useAppStore((s) => s.settings.transcriptWidth === "wide");
   const streaming = useAppStore((s) => s.agent.streaming);
   const queue = useAppStore((s) => s.agent.queue);
   const connectionError = useAppStore((s) => s.connectionError);
+  const connecting = useAppStore((s) => s.connecting);
   const notice = useAppStore((s) => s.notice);
   const setNotice = useAppStore((s) => s.setNotice);
   const composerDraft = useAppStore((s) => s.composerDraft);
@@ -327,7 +330,7 @@ export default function Composer() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[760px] px-6 pb-5">
+    <div className={`mx-auto w-full px-6 pb-5 ${columnWidth(wide)}`}>
       <ApprovalDialog />
 
       {queue.steering.length + queue.followUp.length > 0 ? (
@@ -419,7 +422,9 @@ export default function Composer() {
           }}
           onKeyDown={onKeyDown}
           placeholder={
-            !active
+            connecting
+              ? "Starting the agent…"
+              : !active
               ? "Start a session to begin"
               : streaming
                 ? followUpMode

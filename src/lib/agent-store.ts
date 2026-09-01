@@ -12,7 +12,8 @@ import { create } from "zustand";
 import { applyEvent } from "./agent-reducer";
 import type { HarnessEvent } from "./agent-state";
 import { parseBridgeReply, type BridgeEvent } from "./bridge";
-import { beginTurn, observeDelta, settleTurn } from "./speed";
+import { beginTurn, endMessage, observeDelta, settleTurn } from "./speed";
+import { saveSpeedHistory } from "./store/speed-history";
 import { deliverBridgeReply } from "./store/bridge-rpc";
 import { createCatalogSlice } from "./store/catalog-slice";
 import { createCommandsSlice, normalizeCommands } from "./store/commands-slice";
@@ -126,24 +127,37 @@ export const useAppStore = create<AppStore>((set, get) => {
         break;
 
       case "message_end":
+        // Folds this message into the turn. Not the end of the turn: a tool
+        // call means more messages follow, and counting each one as a turn is
+        // what made a single prompt report as two.
         patch((w) => {
-          const tracker = settleTurn(w.speedTracker, outputTokensOf(event), performance.now());
-          const settled = tracker.sample;
-          return {
-            speedTracker: tracker,
-            speed: settled ?? w.speed,
-            // Only measurable turns join the history — an unmeasured one would
-            // pull the session averages toward nothing.
-            speedHistory: settled?.tokensPerSecond != null ? [...w.speedHistory, settled] : w.speedHistory,
-          };
+          const tracker = endMessage(w.speedTracker, outputTokensOf(event), performance.now());
+          return { speedTracker: tracker, speed: tracker.sample ?? w.speed };
         });
         break;
 
       case "agent_settled":
       case "agent_end": {
+        // The turn is over, so it becomes one entry in the session's history.
+        patch((w) => {
+          const tracker = settleTurn(w.speedTracker, performance.now());
+          const settled = tracker.sample;
+          // Only a measurable turn joins the history — an unmeasured one would
+          // pull the session averages toward nothing.
+          if (settled?.tokensPerSecond == null) return { speedTracker: tracker };
+          const speedHistory = [...w.speedHistory, settled];
+          saveSpeedHistory(w.sessionFile, speedHistory);
+          return { speedTracker: tracker, speed: settled, speedHistory };
+        });
         void get().captureSessionFile();
-        // The turn appended entries, so the leaf moved and the tree is stale.
-        if (workspaceId === get().activeWorkspaceId) void get().refreshTree();
+        if (workspaceId === get().activeWorkspaceId) {
+          // The turn appended entries, so the leaf moved and the tree is stale.
+          void get().refreshTree();
+          // Cost and context were only refreshed when a prompt was *sent*,
+          // which meant both readouts described the session as it was before
+          // the turn that just finished — always one turn behind.
+          void get().refreshContext();
+        }
         if (event.type === "agent_settled") {
           const w = get().workspaces[workspaceId];
           const elsewhere = document.hidden || workspaceId !== get().activeWorkspaceId;

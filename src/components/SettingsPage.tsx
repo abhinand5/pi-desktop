@@ -100,6 +100,19 @@ export default function SettingsPage() {
               ))}
             </div>
           </div>
+          <Row
+            label="Terminal font"
+            help="Leave empty for the built-in stack, which prefers a Nerd Font Mono so a TUI's glyphs land in one cell."
+          >
+            <input
+              value={settings.terminalFont}
+              onChange={(e) => setSetting("terminalFont", e.target.value)}
+              placeholder="JetBrainsMono Nerd Font Mono"
+              spellCheck={false}
+              aria-label="Terminal font"
+              className="h-control-sm w-[220px] rounded-sm border border-line bg-ink-2 px-2 font-mono text-2xs text-ink-text placeholder:text-ink-faint focus:border-line-strong"
+            />
+          </Row>
           <Toggle
             label="Frosted chrome"
             help="Blurs the sidebar, titlebar, and floating panels. The transcript stays opaque so text never competes with what is behind it."

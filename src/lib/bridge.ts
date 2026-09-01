@@ -120,6 +120,22 @@ export interface HarnessCommand {
   path?: string;
 }
 
+/** What a terminal runs. The harness options start the real TUI, not the RPC
+ *  mode the chat drives. */
+export type PtyProgram = "shell" | "pi" | "omp";
+
+export type PtyEvent =
+  | { type: "output"; data: string }
+  | { type: "exit"; code: number | null }
+  | { type: "error"; message: string };
+
+export interface PtyInfo {
+  id: string;
+  program: PtyProgram;
+  cwd: string;
+  host: string | null;
+}
+
 export const bridge = {
   async startRuntime(opts: StartOptions): Promise<RuntimeInfo> {
     const channel = new Channel<BridgeEvent>();
@@ -138,6 +154,43 @@ export const bridge = {
       continueLast: opts.continueLast ?? false,
       onEvent: channel,
     });
+  },
+
+  /**
+   * Opens a real pseudo-terminal. Bytes arrive base64-encoded and are handed
+   * to the emulator untouched: a read can land mid-escape-sequence or
+   * mid-codepoint, and only the emulator can reassemble them.
+   */
+  async openPty(opts: {
+    program: PtyProgram;
+    cwd: string;
+    host?: string | null;
+    cols: number;
+    rows: number;
+    onEvent: (ev: PtyEvent) => void;
+  }): Promise<PtyInfo> {
+    const channel = new Channel<PtyEvent>();
+    channel.onmessage = opts.onEvent;
+    return invoke("pty_open", {
+      program: opts.program,
+      cwd: opts.cwd,
+      host: opts.host ?? null,
+      cols: opts.cols,
+      rows: opts.rows,
+      onEvent: channel,
+    });
+  },
+
+  writePty(id: string, data: string): Promise<void> {
+    return invoke("pty_write", { id, data });
+  },
+
+  resizePty(id: string, cols: number, rows: number): Promise<void> {
+    return invoke("pty_resize", { id, cols, rows });
+  },
+
+  async killPty(id: string): Promise<void> {
+    await invoke("pty_kill", { id });
   },
 
   request(runtimeId: string, command: Record<string, unknown>): Promise<unknown> {

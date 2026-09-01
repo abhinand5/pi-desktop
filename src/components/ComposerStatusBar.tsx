@@ -3,6 +3,8 @@ import { GitBranch, Zap } from "lucide-react";
 import { bridge, type GitStatus } from "../lib/bridge";
 import { useAppStore } from "../lib/agent-store";
 import { formatDuration, formatRate, summarize } from "../lib/speed";
+import { columnWidth } from "../lib/layout";
+import { formatCost } from "../lib/format";
 
 /** Where you are and how much room is left — the two facts you check without
  *  meaning to, kept under the composer rather than in a panel. */
@@ -10,10 +12,11 @@ export default function ComposerStatusBar() {
   const cwd = useAppStore((s) => s.cwd);
   const target = useAppStore((s) => s.target);
   const context = useAppStore((s) => s.context);
+  const stats = useAppStore((s) => s.stats);
   const setPanel = useAppStore((s) => s.setPanel);
   const streaming = useAppStore((s) => s.agent.streaming);
-  const speed = useAppStore((s) => s.speed);
   const showSpeed = useAppStore((s) => s.settings.showSpeed);
+  const wide = useAppStore((s) => s.settings.transcriptWidth === "wide");
 
   const [git, setGit] = useState<GitStatus | null>(null);
 
@@ -37,41 +40,70 @@ export default function ComposerStatusBar() {
   const dirty = (git?.changed ?? 0) + (git?.staged ?? 0);
 
   return (
-    <div className="mx-auto mt-1.5 flex w-full max-w-[760px] items-center gap-3 px-6 font-mono text-2xs text-ink-faint">
-      <span className="min-w-0 max-w-[45%] truncate" title={cwd}>
-        {homeRelative(cwd)}
-      </span>
+    // Where you are on the left, what the session has spent on the right.
+    //
+    // The folder path used to lead this line and no longer does: it is already
+    // on screen in the chip directly above, and it was taking the room the
+    // meters needed. The branch keeps its `title`, so the full path is still a
+    // hover away.
+    //
+    // No `overflow-hidden` here, however tempting: the speed readout opens a
+    // popover upward out of this row, and clipping the row clips the popover.
+    <div
+      className={`mx-auto mt-1.5 flex w-full items-center gap-4 px-6 font-mono text-2xs whitespace-nowrap text-ink-faint ${columnWidth(wide)}`}
+    >
       {git?.isRepo ? (
-        <span className="flex min-w-0 shrink items-center gap-1">
+        <span className="flex min-w-0 items-center gap-1.5" title={cwd}>
           <GitBranch size={10} className="shrink-0" />
-          <span className="truncate">{git.branch}</span>
-          {dirty > 0 ? <span className="text-amber-dim">{dirty} changed</span> : null}
+          <span className="max-w-[220px] truncate text-ink-dim">{git.branch}</span>
+          {dirty > 0 ? <span className="shrink-0 text-amber-dim">{dirty} changed</span> : null}
         </span>
-      ) : null}
-      {showSpeed && speed && (speed.tokensPerSecond !== null || speed.promptMs !== null) ? (
-        <SpeedReadout />
-      ) : null}
+      ) : (
+        <span className="min-w-0 truncate" title={cwd}>
+          {homeRelative(cwd)}
+        </span>
+      )}
 
-      {context?.percent !== undefined ? (
-        <button
-          onClick={() => setPanel("status")}
-          className="ml-auto shrink-0 hover:text-ink-dim"
-          title="Open session status"
-        >
-          {context.tokens ? `${Math.round(context.tokens / 1000)}k` : ""} · {Math.round(context.percent)}% of
-          context
-        </button>
-      ) : null}
+      {/* The three session meters, in one group so they read as a set. */}
+      <span className="ml-auto flex shrink-0 items-center gap-4">
+        {stats?.cost !== undefined && stats.cost > 0 ? (
+          <button
+            onClick={() => setPanel("status")}
+            title="What this session has cost so far, as the agent reports it"
+            className="hover:text-ink-dim"
+          >
+            {formatCost(stats.cost)}
+          </button>
+        ) : null}
+
+        {/* The readout decides for itself whether it has anything to say —
+            after a restart the session average is all there is, and gating on
+            a turn from this run would hide it. */}
+        {showSpeed ? <SpeedReadout /> : null}
+
+        {context?.percent !== undefined ? (
+          <button onClick={() => setPanel("status")} className="hover:text-ink-dim" title="Open session status">
+            {context.tokens ? `${Math.round(context.tokens / 1000)}k` : ""} · {Math.round(context.percent)}% of
+            context
+          </button>
+        ) : null}
+      </span>
     </div>
   );
 }
 
 /**
- * The last turn's throughput, and the session behind it.
+ * Throughput: one number on the strip, the rest a click away.
  *
- * The line itself stays a single figure — that is what you glance at. The
- * session view is a click away because "was that turn slow, or is this session
- * slow?" is a different question, and it needs the other turns to answer.
+ * The strip shows the session's average rate, not the last turn's — an average
+ * is the figure that means something at a glance, where a per-turn rate jumps
+ * around with the length of the answer. While a turn is running it shows that
+ * turn instead, because the average cannot include a turn that has not
+ * finished, and the pulsing icon says which of the two you are looking at.
+ *
+ * Everything else — time to first token, median, best, totals — lives in the
+ * popover, because "was that turn slow, or is this session slow?" is a
+ * different question and needs the other turns to answer.
  */
 function SpeedReadout() {
   const speed = useAppStore((s) => s.speed);
@@ -94,37 +126,47 @@ function SpeedReadout() {
   }, [open]);
 
   const session = useMemo(() => summarize(history), [history]);
-  if (!speed) return null;
+  const live = speed?.live ?? false;
+  // A resumed session has its remembered turns but no turn of its own yet, so
+  // the average stands on its own until one runs.
+  const rate = live ? speed!.tokensPerSecond : (session.meanRate ?? speed?.tokensPerSecond ?? null);
+  if (rate === null) return null;
 
   return (
     <div ref={ref} className="relative shrink-0">
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        title="Session throughput"
-        className={`flex items-center gap-1.5 ${speed.live ? "text-amber-dim" : "hover:text-ink-dim"}`}
+        aria-label={live ? "Throughput, this turn" : "Throughput, session average"}
+        title={
+          live
+            ? "This turn so far — click for the session"
+            : `Session average over ${session.turns} ${session.turns === 1 ? "turn" : "turns"} — click for the breakdown`
+        }
+        className={`flex items-center gap-1.5 ${live ? "text-amber-dim" : "hover:text-ink-dim"}`}
       >
-        <Zap size={9} className={speed.live ? "animate-pulse" : ""} />
-        {speed.promptMs !== null ? <span>{formatDuration(speed.promptMs)} to first token</span> : null}
-        {speed.tokensPerSecond !== null ? <span>· {formatRate(speed.tokensPerSecond)}</span> : null}
+        <Zap size={9} className={live ? "animate-pulse" : ""} />
+        <span>{formatRate(rate)}</span>
       </button>
 
+      {/* Right-anchored: the readout sits in the right half of the strip, so a
+          left-anchored panel would hang off the column. */}
       {open ? (
-        <div className="overlay absolute bottom-full left-0 z-50 mb-1.5 w-[290px] overflow-hidden rounded-lg border border-line bg-ink-1">
-          <div className="border-b border-line px-3 py-2">
-            <div className="font-mono text-2xs tracking-wider text-ink-faint uppercase">this turn</div>
-            <Stat label="To first token" value={formatDuration(speed.promptMs)} />
-            <Stat
-              label="Generation"
-              value={formatRate(speed.tokensPerSecond)}
-              note={speed.live ? "estimated" : undefined}
-            />
-            <Stat
-              label="Output"
-              value={speed.outputTokens !== null ? `${speed.outputTokens.toLocaleString()} tok` : "—"}
-              note={speed.live ? "estimated" : undefined}
-            />
-          </div>
+        <div className="overlay absolute right-0 bottom-full z-50 mb-1.5 w-[290px] overflow-hidden rounded-lg border border-line bg-ink-1">
+          {speed ? (
+            <div className="border-b border-line px-3 py-2">
+              <div className="font-mono text-2xs tracking-wider text-ink-faint uppercase">
+                {live ? "this turn" : "last turn"}
+              </div>
+              <Stat label="To first token" value={formatDuration(speed.promptMs)} />
+              <Stat label="Generation" value={formatRate(speed.tokensPerSecond)} note={live ? "estimated" : undefined} />
+              <Stat
+                label="Output"
+                value={speed.outputTokens !== null ? `${speed.outputTokens.toLocaleString()} tok` : "—"}
+                note={live ? "estimated" : undefined}
+              />
+            </div>
+          ) : null}
 
           <div className="px-3 py-2">
             <div className="font-mono text-2xs tracking-wider text-ink-faint uppercase">

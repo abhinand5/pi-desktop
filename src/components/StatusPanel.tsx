@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { X } from "lucide-react";
 import { useAppStore } from "../lib/agent-store";
+import { formatCost } from "../lib/format";
 
 /** Where the session stands: spend, context headroom, and what it is attached to. */
 export default function StatusPanel() {
@@ -64,7 +65,7 @@ export default function StatusPanel() {
           <Row label="Tokens in" value={stats?.tokens?.input?.toLocaleString()} />
           <Row label="Tokens out" value={stats?.tokens?.output?.toLocaleString()} />
           <Row label="Cache read" value={stats?.tokens?.cacheRead?.toLocaleString()} />
-          <Row label="Cost" value={stats?.cost !== undefined ? `$${stats.cost.toFixed(4)}` : undefined} />
+          <Row label="Cost" value={stats?.cost !== undefined ? formatCost(stats.cost) : undefined} />
           <Row label="Messages" value={stats?.totalMessages?.toLocaleString()} />
           <Row label="Tool calls" value={stats?.toolCalls?.toLocaleString()} />
           <Row label="Model" value={model ? `${model.provider}/${model.id}` : undefined} />

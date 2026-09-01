@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { beginTurn, emptyTracker, formatDuration, formatRate, observeDelta, settleTurn, summarize } from "./speed";
+import {
+  beginTurn,
+  emptyTracker,
+  endMessage,
+  formatDuration,
+  formatRate,
+  observeDelta,
+  settleTurn,
+  summarize,
+} from "./speed";
 
 describe("speed tracking", () => {
   it("measures prompt processing as the wait before the first token", () => {
@@ -20,21 +29,55 @@ describe("speed tracking", () => {
     expect(s.outputTokens).toBe(200);
   });
 
-  it("replaces the estimate with the harness's own count when the turn settles", () => {
+  it("replaces the estimate with the harness's own count when the message ends", () => {
     let t = beginTurn(0);
     t = observeDelta(t, 1900, 1000); // first token at 1s
     t = observeDelta(t, 1900, 2000); // 1s of generation; estimate would be 1000
-    t = settleTurn(t, 500, 2100); // the harness says 500
+    t = endMessage(t, 500, 2100); // the harness says 500
+    t = settleTurn(t, 2100);
     const s = t.sample!;
     expect(s.live).toBe(false);
     expect(s.outputTokens).toBe(500);
     expect(s.tokensPerSecond).toBe(500); // 500 tokens over 1s of generation
   });
 
+  it("counts one turn across a tool call, and leaves the tool's wait out of the rate", () => {
+    // A prompt, an assistant message, a tool that takes ten seconds, then a
+    // second message. Measuring end to end would divide by twelve seconds
+    // rather than two and report a sixth of the real rate.
+    let t = beginTurn(0);
+    t = observeDelta(t, 1900, 1000); // first token at 1s
+    t = observeDelta(t, 1900, 2000); // 1s generating
+    t = endMessage(t, 500, 2000);
+    // …ten seconds of tool…
+    t = observeDelta(t, 1900, 12_000);
+    t = observeDelta(t, 1900, 13_000); // another 1s generating
+    t = endMessage(t, 500, 13_000);
+    t = settleTurn(t, 13_000);
+
+    const s = t.sample!;
+    expect(s.generateMs).toBe(2000);
+    expect(s.outputTokens).toBe(1000);
+    expect(s.tokensPerSecond).toBe(500);
+    // Prompt processing is still measured from the prompt, not from the tool.
+    expect(s.promptMs).toBe(1000);
+  });
+
+  it("goes inert once a turn settles, so the next one measures itself", () => {
+    let t = beginTurn(0);
+    t = observeDelta(t, 3800, 1000);
+    t = observeDelta(t, 3800, 2000);
+    t = settleTurn(t, 2000);
+    expect(t.startedAt).toBeNull();
+    // A stray delta after the turn cannot reopen it.
+    expect(observeDelta(t, 100, 3000).chars).toBe(0);
+  });
+
   it("withholds a rate when only one chunk arrived — there is no window to measure", () => {
     let t = beginTurn(0);
     t = observeDelta(t, 3800, 1000);
-    t = settleTurn(t, 500, 2000);
+    t = endMessage(t, 500, 2000);
+    t = settleTurn(t, 2000);
     expect(t.sample?.tokensPerSecond).toBeNull();
     expect(t.sample?.outputTokens).toBe(500);
   });
@@ -49,7 +92,7 @@ describe("speed tracking", () => {
   it("measures nothing for a turn it never saw start", () => {
     const t = observeDelta(emptyTracker, 500, 1000);
     expect(t.sample).toBeNull();
-    expect(settleTurn(emptyTracker, 100, 1000).sample).toBeNull();
+    expect(settleTurn(emptyTracker, 1000).sample).toBeNull();
   });
 
   it("keeps each turn's figures to that turn", () => {

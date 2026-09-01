@@ -14,7 +14,9 @@ import { describeRuntimeError } from "../errors";
 import { emptyTracker } from "../speed";
 import { cancelBridgeCalls } from "./bridge-rpc";
 import { loadWorkspaces, saveWorkspaces } from "./persist";
+import { loadSpeedHistory } from "./speed-history";
 import type { AppStore, BashResult, RuntimeSlice, SessionStats, SliceOf } from "./types";
+import { closeTerminal } from "../terminals";
 import { BLANK, createWorkspace, project, type Workspace } from "./workspace";
 
 /** Unwraps `{ data }` from a correlated RPC response. */
@@ -133,7 +135,10 @@ export const createRuntimeSlice = (
         onEvent: (ev) => onEvent(id, ev),
       });
       patch(id, { runtime: info, connecting: false, verdict: "live" });
-      void get().loadModels();
+      // The catalog is fetched by spawning a *second* harness process, so it is
+      // loaded once per agent rather than on every session start — it competes
+      // for the machine with the agent that is booting.
+      if (!get().models.length) void get().loadModels();
       void get().loadCommands();
       void get().refreshContext();
       // Adopts the harness's own model and thinking level, so a new session
@@ -144,6 +149,23 @@ export const createRuntimeSlice = (
     } catch (e) {
       patch(id, { connecting: false, connectionError: describeRuntimeError(e, w.harness, w.target) });
     }
+  };
+
+  /**
+   * Starts a workspace that is not running, which is what opening one means.
+   *
+   * Clicking a project is a request to work in it, so the agent comes up on
+   * its own rather than behind a button. Three cases are left alone: a
+   * terminal, which opens its own pty when it mounts; an exited runtime, which
+   * has the reconnect banner because reconnecting to a remote is a decision
+   * and not a retry; and a workspace whose last start failed, which must not
+   * respawn on every click.
+   */
+  const ensureRunning = (id: string) => {
+    const w = get().workspaces[id];
+    if (!w || w.kind !== "chat" || !w.cwd) return;
+    if (w.runtime || w.connecting || w.connectionError) return;
+    void spawn(id, { sessionPath: w.selectedSessionPath });
   };
 
   /** Most commands only make sense against the visible workspace. */
@@ -165,6 +187,7 @@ export const createRuntimeSlice = (
   const first = restored?.activeWorkspaceId ? restored.workspaces[restored.activeWorkspaceId] : null;
 
   return {
+    projects: restored?.projects ?? {},
     workspaces: restored?.workspaces ?? {},
     workspaceOrder: restored?.workspaceOrder ?? [],
     activeWorkspaceId: restored?.activeWorkspaceId ?? null,
@@ -182,10 +205,21 @@ export const createRuntimeSlice = (
             w.cwd === init.cwd &&
             w.target === (init.target ?? null) &&
             w.harness === (init.harness ?? s.harness) &&
+            w.kind === (init.kind ?? "chat") &&
             !init.sessionPath &&
             !init.fresh,
         );
       if (existing) {
+        const savedProject = s.projects[init.cwd];
+        if (!savedProject || savedProject.archived) {
+          set({
+            projects: {
+              ...s.projects,
+              [init.cwd]: { cwd: init.cwd, archived: false },
+            },
+          });
+          remember();
+        }
         get().activateWorkspace(existing.id);
         return existing.id;
       }
@@ -196,8 +230,14 @@ export const createRuntimeSlice = (
         sessionPath: init.sessionPath ?? null,
         thinking: s.settings ? s.thinking : "medium",
         model: s.selectedModel,
+        kind: init.kind,
+        program: init.program,
       });
       set({
+        projects: {
+          ...s.projects,
+          [init.cwd]: { cwd: init.cwd, archived: false },
+        },
         workspaces: { ...s.workspaces, [w.id]: w },
         workspaceOrder: [w.id, ...s.workspaceOrder],
         activeWorkspaceId: w.id,
@@ -205,7 +245,20 @@ export const createRuntimeSlice = (
       });
       remember();
       void get().refreshSessions();
+      ensureRunning(w.id);
       return w.id;
+    },
+
+    openTerminal(init) {
+      return get().openWorkspace({
+        cwd: init.cwd,
+        target: init.target ?? null,
+        kind: "terminal",
+        program: init.program,
+        // Terminals never dedupe: two shells in one folder is the normal case,
+        // not an accident to be collapsed.
+        fresh: true,
+      });
     },
 
     activateWorkspace(id) {
@@ -220,12 +273,14 @@ export const createRuntimeSlice = (
         ...project(cleared),
       });
       remember();
+      ensureRunning(id);
       if (!cleared.tree) void get().refreshTree();
     },
 
     async closeWorkspace(id) {
       const w = get().workspaces[id];
       if (!w) return;
+      closeTerminal(id);
       if (w.runtime && !w.runtime.exited) await bridge.kill(w.runtime.id);
       const workspaces = { ...get().workspaces };
       delete workspaces[id];
@@ -236,6 +291,43 @@ export const createRuntimeSlice = (
         workspaceOrder: order,
         activeWorkspaceId: nextActive,
         ...project(nextActive ? workspaces[nextActive] : BLANK),
+      });
+      remember();
+    },
+
+    async archiveProject(cwd) {
+      if (!cwd) return;
+      const ids = get().workspaceOrder.filter((id) => get().workspaces[id]?.cwd === cwd);
+      for (const id of ids) await get().closeWorkspace(id);
+
+      set({
+        projects: {
+          ...get().projects,
+          [cwd]: { cwd, archived: true },
+        },
+      });
+      remember();
+    },
+
+    async deleteProject(cwd) {
+      if (!cwd) return;
+      const ids = get().workspaceOrder.filter((id) => get().workspaces[id]?.cwd === cwd);
+      for (const id of ids) await get().closeWorkspace(id);
+
+      const projects = { ...get().projects };
+      delete projects[cwd];
+      set({ projects });
+      remember();
+    },
+
+    restoreProject(cwd) {
+      const saved = get().projects[cwd];
+      if (!saved?.archived) return;
+      set({
+        projects: {
+          ...get().projects,
+          [cwd]: { ...saved, archived: false },
+        },
       });
       remember();
     },
@@ -291,9 +383,8 @@ export const createRuntimeSlice = (
 
     async resumeSession(session) {
       // A session belongs to its own folder, which may not be this workspace's.
-      const id = get().openWorkspace({ cwd: session.cwd, sessionPath: session.path });
-      patch(id, { selectedSessionPath: session.path });
-      await spawn(id, { sessionPath: session.path });
+      // Opening the workspace starts it, on the session it was opened for.
+      get().openWorkspace({ cwd: session.cwd, sessionPath: session.path });
     },
 
     async continueLastSession() {
@@ -372,12 +463,12 @@ export const createRuntimeSlice = (
       }
     },
 
+    // `get_session_stats` answers both of these, and it was already being
+    // called for the context readout while everything else in the reply — cost,
+    // token counts, message counts — was thrown away. Keeping it means the
+    // strip under the composer can show the running cost without a second call.
     async refreshContext() {
-      const id = activeId();
-      const usage = data<{ contextUsage?: SessionStats["contextUsage"] }>(
-        await request(rpc.getSessionStats()),
-      )?.contextUsage;
-      if (id && usage) patch(id, { context: usage });
+      await get().refreshStats();
     },
 
     async refreshStats() {
@@ -398,6 +489,12 @@ export const createRuntimeSlice = (
       const adopted = adoptModel(state.model, get().models);
       patch(id, (w) => ({
         sessionFile: state.sessionFile ?? w.sessionFile,
+        // The session's measured turns, which are ours rather than the
+        // harness's. Loaded once, when the file this run belongs to becomes
+        // known; a history already in hand is the newer one.
+        speedHistory: w.speedHistory.length
+          ? w.speedHistory
+          : loadSpeedHistory(state.sessionFile ?? w.sessionFile),
         sessionName: state.sessionName ?? w.sessionName,
         selectedModel: adopted ?? w.selectedModel,
         thinking: state.thinkingLevel ?? w.thinking,

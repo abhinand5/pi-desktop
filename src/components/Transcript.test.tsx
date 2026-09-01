@@ -21,9 +21,7 @@ function setAgent(entries: Entry[], streaming = false) {
 }
 
 function transcriptRoot(): HTMLDivElement {
-  const root = [...document.querySelectorAll<HTMLDivElement>("div")].find(
-    (element) => element.className === "flex-1 overflow-y-auto",
-  );
+  const root = document.querySelector<HTMLDivElement>("[data-transcript]");
   if (!root) throw new Error("Transcript scroll root did not render");
   return root;
 }

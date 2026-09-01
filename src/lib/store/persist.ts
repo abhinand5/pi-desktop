@@ -12,8 +12,8 @@
  * that was ever authoritative.
  */
 
-import type { HarnessId } from "../bridge";
-import { createWorkspace, type Workspace } from "./workspace";
+import type { HarnessId, PtyProgram } from "../bridge";
+import { createWorkspace, type ProjectWorkspace, type Workspace, type WorkspaceKind } from "./workspace";
 
 const KEY = "pi-desktop.workspaces";
 /** Enough to be a memory, not so many that a restart takes a visible moment. */
@@ -25,6 +25,13 @@ interface StoredWorkspace {
   target: string | null;
   sessionPath: string | null;
   sessionName: string | null;
+  kind?: WorkspaceKind;
+  program?: PtyProgram;
+}
+
+interface StoredProject {
+  cwd: string;
+  archived: boolean;
 }
 
 interface Stored {
@@ -32,13 +39,17 @@ interface Stored {
   workspaces: StoredWorkspace[];
   /** Index into `workspaces` of the one that was in front. */
   active: number;
+  /** Folder workspaces, including archived ones with no open tabs. */
+  projects?: StoredProject[];
 }
 
 export interface RestoredWorkspaces {
+  projects: Record<string, ProjectWorkspace>;
   workspaces: Record<string, Workspace>;
   workspaceOrder: string[];
   activeWorkspaceId: string | null;
 }
+
 
 export function loadWorkspaces(): RestoredWorkspaces | null {
   if (typeof window === "undefined") return null;
@@ -47,6 +58,12 @@ export function loadWorkspaces(): RestoredWorkspaces | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Stored;
     if (parsed?.version !== 1 || !Array.isArray(parsed.workspaces)) return null;
+
+    const projects: Record<string, ProjectWorkspace> = {};
+    for (const stored of parsed.projects ?? []) {
+      if (!stored?.cwd) continue;
+      projects[stored.cwd] = { cwd: stored.cwd, archived: stored.archived === true };
+    }
 
     const workspaces: Record<string, Workspace> = {};
     const workspaceOrder: string[] = [];
@@ -57,15 +74,23 @@ export function loadWorkspaces(): RestoredWorkspaces | null {
         cwd: stored.cwd,
         target: stored.target ?? null,
         sessionPath: stored.sessionPath ?? null,
+        // A terminal comes back as an empty terminal, not a dead one: the
+        // scrollback belonged to a process that no longer exists, and the
+        // folder is the part worth keeping.
+        kind: stored.kind === "terminal" ? "terminal" : "chat",
+        program: stored.program,
       });
       w.sessionName = stored.sessionName ?? null;
       workspaces[w.id] = w;
       workspaceOrder.push(w.id);
+      // Version-one stores have no project list; derive active projects from
+      // their remembered session tabs during the migration.
+      if (!projects[w.cwd]) projects[w.cwd] = { cwd: w.cwd, archived: false };
     }
-    if (!workspaceOrder.length) return null;
+    if (!workspaceOrder.length && !Object.keys(projects).length) return null;
 
-    const active = workspaceOrder[parsed.active] ?? workspaceOrder[0];
-    return { workspaces, workspaceOrder, activeWorkspaceId: active };
+    const active = workspaceOrder.length ? workspaceOrder[parsed.active] ?? workspaceOrder[0] : null;
+    return { projects, workspaces, workspaceOrder, activeWorkspaceId: active };
   } catch {
     return null;
   }
@@ -76,6 +101,9 @@ export function saveWorkspaces(state: RestoredWorkspaces): void {
   const order = state.workspaceOrder.slice(0, MAX);
   const stored: Stored = {
     version: 1,
+    projects: Object.values(state.projects)
+      .filter((project) => project.cwd)
+      .map((project) => ({ cwd: project.cwd, archived: project.archived })),
     workspaces: order.flatMap((id) => {
       const w = state.workspaces[id];
       if (!w?.cwd) return [];
@@ -88,6 +116,8 @@ export function saveWorkspaces(state: RestoredWorkspaces): void {
           // selection is only what we asked for.
           sessionPath: w.sessionFile ?? w.selectedSessionPath,
           sessionName: w.sessionName,
+          kind: w.kind,
+          program: w.program,
         },
       ];
     }),

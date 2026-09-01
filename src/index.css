@@ -48,6 +48,19 @@
   --font-sans: "Inter Variable", "SF Pro Text", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
 
+  /* The terminal's own stack, which `--font-mono` cannot be.
+     A harness TUI draws its chrome out of Nerd Font glyphs in the private use
+     area, and a plain mono font has none of them — the browser then falls back
+     per glyph to whatever it can find, with different metrics, so the icons
+     come out as boxes or knock the columns out of line. A *Mono* Nerd variant
+     is the one that forces every glyph into a single cell, and it has to come
+     first because xterm measures the cell from the first font in the list.
+     Settings can override this; see `applyAppearance`. */
+  --font-terminal:
+    "JetBrainsMono Nerd Font Mono", "JetBrainsMono NFM", "FiraCode Nerd Font Mono",
+    "Hack Nerd Font Mono", "MesloLGS Nerd Font Mono", "Symbols Nerd Font Mono",
+    "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+
   /* Type scale. Eight sizes, each paired with a line height, replacing the ten
      unrelated pixel values this file used to leave to each component.
      `md` is the reading size — the transcript — so every heading sits above it. */
@@ -305,6 +318,14 @@ textarea:focus-visible,
 input:focus-visible {
   /* These live inside a field that already draws its own focus border. */
   outline: none;
+}
+
+/* The transcript reserves its scrollbar gutter on both sides, always.
+   Otherwise its centred column sits half a scrollbar left of the composer
+   below it, and shifts sideways the moment a conversation grows past one
+   screen and the scrollbar appears. */
+[data-transcript] {
+  scrollbar-gutter: stable both-edges;
 }
 
 *::-webkit-scrollbar {

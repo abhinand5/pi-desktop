@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
+  Archive,
   BarChart3,
   ChevronDown,
   ChevronRight,
@@ -8,9 +9,11 @@ import {
   FolderOpen,
   History as HistoryIcon,
   Loader2,
+  MoreHorizontal,
   Plug,
   Plus,
   Server,
+  SquareTerminal,
   Trash2,
   X,
 } from "lucide-react";
@@ -18,7 +21,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type { SessionSummary } from "../lib/agent-state";
 import { bridge } from "../lib/bridge";
 import { useAppStore } from "../lib/agent-store";
+import NewInProject, { type MenuAnchor } from "./NewInProject";
 import { projectName, sessionLabel, shortAge, workspaceTitle, type Workspace } from "../lib/store/workspace";
+import WorkspaceActionsMenu from "./WorkspaceActionsMenu";
 
 /**
  * The left rail: your open workspaces, grouped by project.
@@ -35,6 +40,7 @@ export default function Sidebar() {
 
 function SidebarBody() {
   const harness = useAppStore((s) => s.harness);
+  const projects = useAppStore((s) => s.projects);
   const workspaces = useAppStore((s) => s.workspaces);
   const order = useAppStore((s) => s.workspaceOrder);
   const activeId = useAppStore((s) => s.activeWorkspaceId);
@@ -54,31 +60,11 @@ function SidebarBody() {
   const removeHost = useAppStore((s) => s.removeHost);
   const setHarness = useAppStore((s) => s.setHarness);
   const resumeSession = useAppStore((s) => s.resumeSession);
-  const startRuntime = useAppStore((s) => s.startRuntime);
+  const restoreProject = useAppStore((s) => s.restoreProject);
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<Record<string, boolean>>({});
+  const [newMenu, setNewMenu] = useState<MenuAnchor | null>(null);
+  const [workspaceMenu, setWorkspaceMenu] = useState<string | null>(null);
 
-  const groups = useMemo(() => {
-    const out = new Map<string, Workspace[]>();
-    for (const id of order) {
-      const w = workspaces[id];
-      if (!w) continue;
-      const key = w.cwd || "no folder";
-      const list = out.get(key);
-      if (list) list.push(w);
-      else out.set(key, [w]);
-    }
-    return [...out.entries()];
-  }, [workspaces, order]);
-
-  /**
-   * The agent's own session files, filed under the project they belong to.
-   *
-   * A workspace is a folder you have open; the sessions in it are the
-   * conversations that folder has had. Showing them in the group is what makes
-   * a remembered workspace worth remembering — you come back to the project and
-   * its past conversations are right there, rather than mixed in with every
-   * other project's in one flat list.
-   */
   const sessionsByProject = useMemo(() => {
     const open = new Set<string>();
     for (const id of order) {
@@ -88,7 +74,8 @@ function SidebarBody() {
     }
     const out = new Map<string, SessionSummary[]>();
     for (const session of sessions) {
-      if (open.has(session.path)) continue;
+      const project = projects[session.cwd];
+      if (!project || project.archived || open.has(session.path)) continue;
       const list = out.get(session.cwd);
       if (list) list.push(session);
       else out.set(session.cwd, [session]);
@@ -97,7 +84,31 @@ function SidebarBody() {
       list.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
     }
     return out;
-  }, [sessions, workspaces, order]);
+  }, [sessions, projects, workspaces, order]);
+
+  const groups = useMemo(() => {
+    const out = new Map<string, Workspace[]>();
+    for (const id of order) {
+      const w = workspaces[id];
+      if (!w || !projects[w.cwd] || projects[w.cwd].archived) continue;
+      const list = out.get(w.cwd);
+      if (list) list.push(w);
+      else out.set(w.cwd, [w]);
+    }
+    for (const cwd of Object.keys(projects)) {
+      if (projects[cwd].archived || out.has(cwd)) continue;
+      out.set(cwd, []);
+    }
+    return [...out.entries()];
+  }, [projects, workspaces, order]);
+
+  const archivedProjects = useMemo(
+    () =>
+      Object.values(projects)
+        .filter((project) => project.archived)
+        .sort((a, b) => a.cwd.localeCompare(b.cwd)),
+    [projects],
+  );
 
   const chooseFolder = async () => {
     const dir = await open({ directory: true, multiple: false });
@@ -171,7 +182,7 @@ function SidebarBody() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
-        {groups.length === 0 ? (
+        {groups.length === 0 && archivedProjects.length === 0 ? (
           <button
             onClick={() => void chooseFolder()}
             className="flex w-full items-center gap-2 rounded-sm border border-dashed border-line px-2.5 py-2 text-left text-sm text-ink-dim hover:border-line-strong hover:text-ink-text"
@@ -206,29 +217,46 @@ function SidebarBody() {
                     )}
                     <span className="truncate text-sm text-ink-text">{project}</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // A second workspace on the folder rather than `newSession`,
-                      // which resets the session in place — a `+` beside a list of
-                      // running sessions must not silently discard one of them.
-                      const first = list[0];
-                      if (!first) return;
-                      openWorkspace({
-                        cwd,
-                        harness: first.harness,
-                        target: first.target,
-                        fresh: true,
-                      });
-                      setRoute("chat");
-                      void startRuntime();
-                    }}
-                    className="shrink-0 rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-ink-text"
-                    aria-label={`New session in workspace ${project}`}
-                    title={`New session in ${project}`}
-                  >
-                    <Plus size={13} />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWorkspaceMenu(null);
+                          setNewMenu(newMenu?.cwd === cwd ? null : { cwd, target: list[0]?.target ?? null });
+                        }}
+                        aria-haspopup="menu"
+                        aria-expanded={newMenu?.cwd === cwd}
+                        className="rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-ink-text"
+                        aria-label={`New in ${project}`}
+                        title={`New in ${project}`}
+                      >
+                        <Plus size={13} />
+                      </button>
+                      {newMenu?.cwd === cwd ? (
+                        <NewInProject anchor={newMenu} onClose={() => setNewMenu(null)} />
+                      ) : null}
+                    </div>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewMenu(null);
+                          setWorkspaceMenu(workspaceMenu === cwd ? null : cwd);
+                        }}
+                        aria-haspopup="menu"
+                        aria-expanded={workspaceMenu === cwd}
+                        className="rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-ink-text"
+                        aria-label={`Workspace actions for ${project}`}
+                        title={`Workspace actions for ${project}`}
+                      >
+                        <MoreHorizontal size={13} />
+                      </button>
+                      {workspaceMenu === cwd ? (
+                        <WorkspaceActionsMenu cwd={cwd} onClose={() => setWorkspaceMenu(null)} />
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
                 {!collapsed ? (
                   <div
@@ -259,6 +287,47 @@ function SidebarBody() {
             );
           })
         )}
+        {archivedProjects.length ? (
+          <div className="mt-4 border-t border-line/60 pt-2">
+            <div className="px-1 pb-1 font-mono text-2xs tracking-wider text-ink-faint uppercase">archived</div>
+            {archivedProjects.map(({ cwd }) => {
+              const project = projectName(cwd);
+              return (
+                <div key={cwd} className="group flex items-center gap-1 rounded-sm px-1 py-1">
+                  <button
+                    type="button"
+                    onClick={() => restoreProject(cwd)}
+                    aria-label={`Restore workspace ${project}`}
+                    title={cwd}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 py-1 text-left text-sm text-ink-dim hover:bg-ink-2 hover:text-ink-text"
+                  >
+                    <Archive size={12} className="shrink-0 text-ink-faint" />
+                    <span className="min-w-0 flex-1 truncate">{project}</span>
+                  </button>
+                  <div className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewMenu(null);
+                        setWorkspaceMenu(workspaceMenu === cwd ? null : cwd);
+                      }}
+                      aria-haspopup="menu"
+                      aria-expanded={workspaceMenu === cwd}
+                      aria-label={`Workspace actions for ${project}`}
+                      title={`Workspace actions for ${project}`}
+                      className="row-actions rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-ink-text"
+                    >
+                      <MoreHorizontal size={13} />
+                    </button>
+                    {workspaceMenu === cwd ? (
+                      <WorkspaceActionsMenu cwd={cwd} onClose={() => setWorkspaceMenu(null)} />
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
 
       </div>
 
@@ -348,8 +417,10 @@ function WorkspaceRow({
   onSelect: () => void;
   onClose: () => void;
 }) {
+  const terminal = workspace.kind === "terminal";
   const live = !!workspace.runtime && !workspace.runtime.exited;
   const working = live && workspace.agent.streaming;
+  const label = terminal ? TERMINAL_TITLE[workspace.program] : workspaceTitle(workspace);
 
   return (
     <div
@@ -357,16 +428,21 @@ function WorkspaceRow({
         active ? "bg-ink-3" : "hover:bg-ink-2"
       }`}
     >
-      <StateDot working={working} live={live} unread={workspace.unread} connecting={workspace.connecting} />
+      {terminal ? (
+        <SquareTerminal size={11} className="shrink-0 text-ink-faint" aria-label="terminal" />
+      ) : (
+        <StateDot working={working} live={live} unread={workspace.unread} connecting={workspace.connecting} />
+      )}
       <button onClick={onSelect} className="min-w-0 flex-1 truncate text-left text-sm text-ink-text">
-        {workspaceTitle(workspace)}
+        {label}
       </button>
       {workspace.target ? (
         <span className="shrink-0 font-mono text-2xs text-teal">{workspace.target}</span>
       ) : null}
       <button
         onClick={onClose}
-        aria-label={`Close ${workspaceTitle(workspace)}`}
+        aria-label={`Close ${label}`}
+        title={`Close ${label}`}
         className="row-actions shrink-0 text-ink-faint hover:text-red"
       >
         <X size={11} />
@@ -374,6 +450,13 @@ function WorkspaceRow({
     </div>
   );
 }
+
+/** A terminal has no session name to show, so it says what it runs. */
+const TERMINAL_TITLE: Record<string, string> = {
+  shell: "terminal",
+  pi: "pi · terminal",
+  omp: "omp · terminal",
+};
 
 /** Working, idle, or finished-while-you-were-away. */
 function StateDot({

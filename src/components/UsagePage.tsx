@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useAppStore } from "../lib/agent-store";
+import { formatCost } from "../lib/format";
 import type { DayUsage, UsageReport, UsageWindow } from "../lib/store/types";
 
 const WINDOWS: Array<{ value: UsageWindow; label: string }> = [
@@ -111,7 +112,7 @@ function Overview({ usage }: { usage: UsageReport }) {
         <Tile label="Current streak" value={`${usage.currentStreak}d`} />
         <Tile label="Longest streak" value={`${usage.longestStreak}d`} />
         <Tile label="Peak hour" value={usage.peakHour === null ? "—" : formatHour(usage.peakHour)} />
-        <Tile label="Spend" value={usage.cost > 0 ? `$${usage.cost.toFixed(2)}` : "—"} />
+        <Tile label="Spend" value={usage.cost > 0 ? formatCost(usage.cost) : "—"} />
       </div>
 
       <Heatmap days={usage.byDay} />
@@ -131,7 +132,7 @@ function Models({ usage }: { usage: UsageReport }) {
             <span className="min-w-0 flex-1 truncate font-mono text-sm text-ink-text">{m.model}</span>
             <span className="shrink-0 font-mono text-2xs text-ink-faint">
               {m.messages.toLocaleString()} msg · {compact(m.tokens.total)} tok
-              {m.cost > 0 ? ` · $${m.cost.toFixed(2)}` : ""}
+              {m.cost > 0 ? ` · ${formatCost(m.cost)}` : ""}
             </span>
           </div>
           <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-ink-3">

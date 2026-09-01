@@ -45,6 +45,14 @@ export function applyAppearance(settings: Settings) {
   root.style.colorScheme = light ? "light" : "dark";
   if (settings.glass) root.setAttribute("data-glass", "on");
   else root.removeAttribute("data-glass");
+  // Set as a property override rather than passed to each terminal: the
+  // terminals read the computed value, so this reaches the ones already open
+  // as well as the next one.
+  if (settings.terminalFont.trim()) {
+    root.style.setProperty("--font-terminal", `${settings.terminalFont.trim()}, ui-monospace, monospace`);
+  } else {
+    root.style.removeProperty("--font-terminal");
+  }
 }
 
 export const createSettingsSlice: SliceOf<SettingsSlice> = (set, get) => {

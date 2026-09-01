@@ -31,25 +31,47 @@ export interface SpeedSample {
   live: boolean;
 }
 
+/**
+ * One turn's measurement in progress.
+ *
+ * A turn is one prompt and everything the agent does to answer it, which may be
+ * several assistant messages with tool calls between them. That matters for the
+ * arithmetic: the gap while a tool runs is not generation, so each message's
+ * span is closed and added to a running total rather than measuring end to end
+ * across the whole turn. Timing across the gaps would report a rate a third of
+ * the real one on any turn that used a tool.
+ */
 export interface SpeedTracker {
+  /** When the prompt was sent. Null between turns. */
   startedAt: number | null;
+  /** First output of the turn, for the prompt-processing figure. */
   firstTokenAt: number | null;
+  /** First output of the message currently streaming. */
+  messageStartAt: number | null;
   lastTokenAt: number | null;
+  /** Characters of the message currently streaming. */
   chars: number;
+  /** Output tokens of the messages already closed in this turn. */
+  tokens: number;
+  /** Generation time of the messages already closed, tool gaps excluded. */
+  generateMs: number;
   sample: SpeedSample | null;
 }
 
 export const emptyTracker: SpeedTracker = {
   startedAt: null,
   firstTokenAt: null,
+  messageStartAt: null,
   lastTokenAt: null,
   chars: 0,
+  tokens: 0,
+  generateMs: 0,
   sample: null,
 };
 
 /** A turn began. Everything resets — speed describes one turn, not a session. */
 export function beginTurn(now: number): SpeedTracker {
-  return { startedAt: now, firstTokenAt: null, lastTokenAt: null, chars: 0, sample: null };
+  return { ...emptyTracker, startedAt: now };
 }
 
 /** Output arrived. The first call closes out prompt processing. */
@@ -57,10 +79,10 @@ export function observeDelta(tracker: SpeedTracker, chars: number, now: number):
   // Output before a recorded start (a replayed or resumed turn) is not
   // measurable — timing it against nothing would invent a number.
   if (tracker.startedAt === null) return tracker;
-  const firstTokenAt = tracker.firstTokenAt ?? now;
   const next: SpeedTracker = {
     ...tracker,
-    firstTokenAt,
+    firstTokenAt: tracker.firstTokenAt ?? now,
+    messageStartAt: tracker.messageStartAt ?? now,
     lastTokenAt: now,
     chars: tracker.chars + chars,
   };
@@ -68,39 +90,70 @@ export function observeDelta(tracker: SpeedTracker, chars: number, now: number):
 }
 
 /**
- * The turn finished. `outputTokens` is the harness's own count, which replaces
- * the character estimate.
+ * One assistant message ended. `outputTokens` is the harness's own count, which
+ * replaces the character estimate for that message.
+ *
+ * The turn may not be over — a tool call means more messages follow — so the
+ * figures stay marked live and the message's span is folded into the totals.
  */
-export function settleTurn(
+export function endMessage(
   tracker: SpeedTracker,
   outputTokens: number | null,
   now: number,
 ): SpeedTracker {
-  if (tracker.startedAt === null) return { ...tracker, sample: null };
-  const next: SpeedTracker = { ...tracker, lastTokenAt: tracker.lastTokenAt ?? now };
-  return { ...next, sample: measure(next, true, outputTokens) };
+  if (tracker.startedAt === null) return tracker;
+  const closed = closeMessage(tracker, outputTokens, now);
+  return { ...closed, sample: measure(closed, false) };
 }
 
-function measure(t: SpeedTracker, settled: boolean, outputTokens?: number | null): SpeedSample {
-  const promptMs = t.startedAt !== null && t.firstTokenAt !== null ? t.firstTokenAt - t.startedAt : null;
-  const generateMs = t.firstTokenAt !== null && t.lastTokenAt !== null ? t.lastTokenAt - t.firstTokenAt : null;
+/**
+ * The turn finished. What comes back is the figure for the whole turn, and the
+ * tracker goes inert so the next `agent_start` begins a fresh one — which is
+ * what makes a steered or queued follow-up measure as its own turn.
+ */
+export function settleTurn(tracker: SpeedTracker, now: number): SpeedTracker {
+  if (tracker.startedAt === null) return { ...tracker, sample: null };
+  const closed = closeMessage(tracker, null, now);
+  return { ...closed, startedAt: null, sample: measure(closed, true) };
+}
 
-  const tokens =
-    settled && typeof outputTokens === "number" && outputTokens > 0
+/** Folds the open message's span and tokens into the turn's totals. */
+function closeMessage(t: SpeedTracker, outputTokens: number | null, now: number): SpeedTracker {
+  if (t.messageStartAt === null && t.chars === 0) return t;
+  const lastTokenAt = t.lastTokenAt ?? now;
+  const span = t.messageStartAt !== null ? Math.max(0, lastTokenAt - t.messageStartAt) : 0;
+  const counted =
+    typeof outputTokens === "number" && outputTokens > 0
       ? outputTokens
-      : t.chars > 0
-        ? Math.round(t.chars / CHARS_PER_TOKEN)
-        : null;
+      : Math.round(t.chars / CHARS_PER_TOKEN);
+  return {
+    ...t,
+    lastTokenAt,
+    generateMs: t.generateMs + span,
+    tokens: t.tokens + counted,
+    chars: 0,
+    messageStartAt: null,
+  };
+}
+
+function measure(t: SpeedTracker, settled: boolean): SpeedSample {
+  const promptMs = t.startedAt !== null && t.firstTokenAt !== null ? t.firstTokenAt - t.startedAt : null;
+
+  // The message still streaming, on top of the ones already closed.
+  const openSpan =
+    t.messageStartAt !== null && t.lastTokenAt !== null ? Math.max(0, t.lastTokenAt - t.messageStartAt) : 0;
+  const generateMs = t.generateMs + openSpan;
+  const openTokens = t.chars > 0 ? t.chars / CHARS_PER_TOKEN : 0;
+  const tokens = t.tokens + openTokens;
 
   // Under ~120ms the clock resolution dominates and the rate is nonsense.
-  const tokensPerSecond =
-    tokens !== null && generateMs !== null && generateMs >= 120 ? (tokens * 1000) / generateMs : null;
+  const tokensPerSecond = tokens > 0 && generateMs >= 120 ? (tokens * 1000) / generateMs : null;
 
   return {
     promptMs,
     tokensPerSecond,
-    outputTokens: tokens,
-    generateMs,
+    outputTokens: tokens > 0 ? Math.round(tokens) : null,
+    generateMs: generateMs > 0 ? generateMs : null,
     live: !settled,
   };
 }

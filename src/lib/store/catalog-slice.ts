@@ -3,6 +3,7 @@
 
 import { bridge, rpc } from "../bridge";
 import { patchWorkspace } from "./runtime-slice";
+import { forgetSpeedHistory } from "./speed-history";
 import type { CatalogSlice, SliceOf } from "./types";
 
 export const createCatalogSlice: SliceOf<CatalogSlice> = (set, get) => ({
@@ -54,10 +55,18 @@ export const createCatalogSlice: SliceOf<CatalogSlice> = (set, get) => ({
   async refreshSessions() {
     const sessions = await bridge.sessions(get().harness).catch(() => []);
     set({ sessions });
+
+    const titleByPath = new Map(sessions.map((session) => [session.path, session.name?.trim()]));
+    for (const [id, workspace] of Object.entries(get().workspaces)) {
+      const path = workspace.sessionFile ?? workspace.selectedSessionPath;
+      const title = path ? titleByPath.get(path) : undefined;
+      if (title && title !== workspace.sessionName) patchWorkspace(set, get, id, { sessionName: title });
+    }
   },
 
   async deleteSession(path) {
     await bridge.deleteSession(path);
+    forgetSpeedHistory(path);
     // A deleted session must not linger as a resume target.
     if (get().selectedSessionPath === path) set({ selectedSessionPath: null });
     await get().refreshSessions();
