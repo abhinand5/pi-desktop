@@ -279,13 +279,28 @@ body {
 
 /* Opacity high enough that what is behind reads as depth, not as text. A
    popover you can read the transcript through is a legibility bug wearing a
-   style. */
+   style.
+
+   The tint has to hold that on its own, because the blur cannot be relied on
+   to arrive. WebKitGTK parses `backdrop-filter` — so `@supports` says yes —
+   but only paints it with accelerated compositing, and an AppImage runs a
+   webview that is both older than the host's and forced onto X11 by Tauri's
+   own bundler. Where the blur is dropped, a 90% tint left the transcript
+   crisply readable straight through a dialog; at 97% the same failure costs
+   the frost and nothing else. `-webkit-` first, for the engines that only
+   ever implemented the prefixed property. */
 [data-glass="on"] .overlay {
-  background: color-mix(in srgb, var(--color-ink-1) 90%, transparent);
+  background: color-mix(in srgb, var(--color-ink-1) 97%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
   backdrop-filter: blur(20px) saturate(1.3);
 }
+/* The chrome keeps the stronger tint: the titlebar, sidebar and composer are
+   laid out beside and below the transcript rather than over it, so what a
+   failed blur exposes there is the page's own gradient. This is where most of
+   the glass is visible anyway. */
 [data-glass="on"] .chrome {
   background: color-mix(in srgb, var(--color-ink-1) 72%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.25);
   backdrop-filter: blur(20px) saturate(1.25);
 }
 /* Something for the blur to pick up. Without it, glass over a flat fill just
@@ -297,9 +312,11 @@ body {
   background-attachment: fixed;
 }
 
-@supports not (backdrop-filter: blur(1px)) {
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   /* No blur means no glass — a flat translucent panel over moving text is
-     worse than the opaque one it replaced. */
+     worse than the opaque one it replaced. Testing both spellings: an engine
+     that implements only the prefixed one was taking this fallback and losing
+     a blur it could actually paint. */
   [data-glass="on"] .overlay,
   [data-glass="on"] .chrome {
     background: var(--color-ink-1);
