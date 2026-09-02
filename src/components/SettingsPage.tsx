@@ -62,6 +62,22 @@ export default function SettingsPage() {
           </Row>
         </Group>
 
+        <Group title="Workspaces">
+          <Row
+            label="Scratch workspace"
+            help="Leave empty for Pi Desktop's app-owned default. Use an absolute path or a path starting with ~."
+          >
+            <input
+              value={settings.scratchWorkspacePath}
+              onChange={(e) => setSetting("scratchWorkspacePath", e.target.value)}
+              placeholder="App data/scratch-workspaces"
+              spellCheck={false}
+              aria-label="Scratch workspace"
+              className="h-control-sm w-[280px] rounded-sm border border-line bg-ink-2 px-2 font-mono text-2xs text-ink-text placeholder:text-ink-faint focus:border-line-strong"
+            />
+          </Row>
+        </Group>
+
         <Group title="Appearance">
           <div className="px-4 py-3">
             <div className="text-md text-ink-text">Theme</div>

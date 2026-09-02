@@ -30,4 +30,6 @@ tracing.workspace = true
 tauri-plugin-notification = "2.3.3"
 portable-pty = "0.9"
 base64 = "0.22"
+arboard = { version = "3", features = ["wayland-data-control"] }
+png = "0.17"
 

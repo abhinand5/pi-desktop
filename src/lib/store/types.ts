@@ -18,7 +18,7 @@ import type {
   SessionTree,
   TreeNode,
 } from "../bridge";
-import type { ProjectWorkspace, Workspace, WorkspaceKind, WorkspaceProjection } from "./workspace";
+import type { ProjectKind, ProjectWorkspace, Workspace, WorkspaceKind, WorkspaceProjection } from "./workspace";
 
 /** Remote-session verdict after contact loss (orca-style semantics). */
 export type Verdict = "live" | "unverifiable" | "exited" | null;
@@ -41,7 +41,10 @@ export interface RuntimeSlice extends WorkspaceProjection {
     fresh?: boolean;
     kind?: WorkspaceKind;
     program?: PtyProgram;
+    projectKind?: ProjectKind;
   }): string;
+  /** Starts a fresh local session in the app-owned scratch root. */
+  openScratchWorkspace(): Promise<string | null>;
   /** A terminal in a folder. Always its own workspace — you open a second
    *  terminal because you want a second terminal. */
   openTerminal(init: { cwd: string; program: PtyProgram; target?: string | null }): string;
@@ -171,6 +174,9 @@ export interface Settings {
   /** Overrides the terminal's font stack. Empty means the built-in one, which
    *  already prefers a Nerd Font Mono so TUI glyphs render. */
   terminalFont: string;
+  /** Optional root for generic scratch sessions. Empty uses the app-owned default. */
+  scratchWorkspacePath: string;
+
   /** Frosts the chrome and floating panels. The transcript stays opaque. */
   glass: boolean;
   thinkingDisplay: ThinkingDisplay;
@@ -191,6 +197,7 @@ export interface Settings {
 export const defaultSettings: Settings = {
   theme: "phosphor",
   terminalFont: "",
+  scratchWorkspacePath: "",
   glass: false,
   thinkingDisplay: "inline",
   thinkingPace: "readable",

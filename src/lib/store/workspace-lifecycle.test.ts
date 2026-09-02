@@ -24,8 +24,8 @@ describe("project workspace lifecycle", () => {
     const other = createWorkspace({ harness: "omp", cwd: "/w/other" });
     useAppStore.setState({
       projects: {
-        [cwd]: { cwd, archived: false },
-        [other.cwd]: { cwd: other.cwd, archived: false },
+        [cwd]: { cwd, archived: false, kind: "folder" },
+        [other.cwd]: { cwd: other.cwd, archived: false, kind: "folder" },
       },
       workspaces: { [first.id]: first, [second.id]: second, [other.id]: other },
       workspaceOrder: [first.id, second.id, other.id],
@@ -34,7 +34,7 @@ describe("project workspace lifecycle", () => {
 
     await useAppStore.getState().archiveProject(cwd);
 
-    expect(useAppStore.getState().projects[cwd]).toEqual({ cwd, archived: true });
+    expect(useAppStore.getState().projects[cwd]).toEqual({ cwd, archived: true, kind: "folder" });
     expect(useAppStore.getState().workspaces[first.id]).toBeUndefined();
     expect(useAppStore.getState().workspaces[second.id]).toBeUndefined();
     expect(useAppStore.getState().workspaces[other.id]).toBeDefined();
@@ -51,7 +51,7 @@ describe("project workspace lifecycle", () => {
       truncated: false,
     };
     useAppStore.setState({
-      projects: { [cwd]: { cwd, archived: false } },
+      projects: { [cwd]: { cwd, archived: false, kind: "folder" } },
       workspaces: { [workspace.id]: workspace },
       workspaceOrder: [workspace.id],
       activeWorkspaceId: workspace.id,
@@ -67,11 +67,11 @@ describe("project workspace lifecycle", () => {
   });
 
   it("restores an archived project workspace", () => {
-    useAppStore.setState({ projects: { [cwd]: { cwd, archived: true } } });
+    useAppStore.setState({ projects: { [cwd]: { cwd, archived: true, kind: "folder" } } });
 
     useAppStore.getState().restoreProject(cwd);
 
-    expect(useAppStore.getState().projects[cwd]).toEqual({ cwd, archived: false });
+    expect(useAppStore.getState().projects[cwd]).toEqual({ cwd, archived: false, kind: "folder" });
   });
 
   it("uses the first user message line for an open workspace title", () => {
@@ -95,7 +95,7 @@ describe("project workspace lifecycle", () => {
       },
     ]);
     useAppStore.setState({
-      projects: { [cwd]: { cwd, archived: false } },
+      projects: { [cwd]: { cwd, archived: false, kind: "folder" } },
       workspaces: { [workspace.id]: workspace },
       workspaceOrder: [workspace.id],
       activeWorkspaceId: workspace.id,
@@ -104,5 +104,54 @@ describe("project workspace lifecycle", () => {
     await useAppStore.getState().refreshSessions();
 
     expect(useAppStore.getState().workspaces[workspace.id].sessionName).toBe("first prompt");
+  });
+
+  it("reuses the open workspace when resuming the same session", async () => {
+    const sessionPath = "/sessions/first.jsonl";
+    const workspace = createWorkspace({ harness: "omp", cwd, sessionPath });
+    workspace.runtime = { id: "rt-first", harness: "omp", pid: 1, exited: false, host: null };
+    useAppStore.setState({
+      projects: { [cwd]: { cwd, archived: false, kind: "folder" } },
+      workspaces: { [workspace.id]: workspace },
+      workspaceOrder: [workspace.id],
+      activeWorkspaceId: workspace.id,
+    });
+
+    await useAppStore.getState().resumeSession({
+      path: sessionPath,
+      id: "first",
+      cwd,
+      truncated: false,
+    });
+
+    expect(useAppStore.getState().workspaceOrder).toEqual([workspace.id]);
+    expect(useAppStore.getState().activeWorkspaceId).toBe(workspace.id);
+  });
+
+  it("opens a fresh local scratch workspace with the selected harness", async () => {
+    const cwd = "/home/me/.local/share/dev.pidesktop.app/scratch-workspaces/session-test";
+    const scratchWorkspace = vi.spyOn(bridge, "scratchWorkspace").mockResolvedValue(cwd);
+    vi.spyOn(bridge, "startRuntime").mockResolvedValue({
+      id: "rt-scratch",
+      harness: "pi",
+      pid: 1,
+      exited: false,
+      host: null,
+    });
+    useAppStore.setState({
+      harness: "pi",
+      target: "build-box",
+      settings: { ...useAppStore.getState().settings, scratchWorkspacePath: "~/scratch" },
+    });
+
+    const id = await useAppStore.getState().openScratchWorkspace();
+    const state = useAppStore.getState();
+    const workspace = state.workspaces[id!];
+
+    expect(workspace.cwd).toBe(cwd);
+    expect(workspace.harness).toBe("pi");
+    expect(workspace.target).toBeNull();
+    expect(state.projects[cwd]).toEqual({ cwd, archived: false, kind: "scratch" });
+    expect(scratchWorkspace).toHaveBeenCalledWith("~/scratch");
   });
 });

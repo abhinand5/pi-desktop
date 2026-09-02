@@ -193,6 +193,7 @@ function appCommands(): Command[] {
   return [
     make("use-pi", "Switch to pi", "Run sessions with the pi agent", () => s().setHarness("pi")),
     make("use-omp", "Switch to omp", "Run sessions with the omp agent", () => s().setHarness("omp")),
+    make("scratch", "Start scratch session", "Launch a generic local session without choosing a folder", () => void s().openScratchWorkspace()),
     make("start", "Start session", "Launch the agent in this project", () => void s().startRuntime()),
     make("stop", "Stop session", "Shut the agent down", () => void s().stopRuntime()),
     make("reconnect", "Reconnect", "Reattach to the session after losing contact", () => void s().reconnect()),

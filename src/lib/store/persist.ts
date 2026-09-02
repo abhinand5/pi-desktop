@@ -13,7 +13,14 @@
  */
 
 import type { HarnessId, PtyProgram } from "../bridge";
-import { createWorkspace, type ProjectWorkspace, type Workspace, type WorkspaceKind } from "./workspace";
+import {
+  createWorkspace,
+  isScratchWorkspacePath,
+  type ProjectKind,
+  type ProjectWorkspace,
+  type Workspace,
+  type WorkspaceKind,
+} from "./workspace";
 
 const KEY = "pi-desktop.workspaces";
 /** Enough to be a memory, not so many that a restart takes a visible moment. */
@@ -32,6 +39,7 @@ interface StoredWorkspace {
 interface StoredProject {
   cwd: string;
   archived: boolean;
+  kind?: ProjectKind;
 }
 
 interface Stored {
@@ -39,7 +47,7 @@ interface Stored {
   workspaces: StoredWorkspace[];
   /** Index into `workspaces` of the one that was in front. */
   active: number;
-  /** Folder workspaces, including archived ones with no open tabs. */
+  /** Project workspaces, including archived ones with no open tabs. */
   projects?: StoredProject[];
 }
 
@@ -62,7 +70,11 @@ export function loadWorkspaces(): RestoredWorkspaces | null {
     const projects: Record<string, ProjectWorkspace> = {};
     for (const stored of parsed.projects ?? []) {
       if (!stored?.cwd) continue;
-      projects[stored.cwd] = { cwd: stored.cwd, archived: stored.archived === true };
+      projects[stored.cwd] = {
+        cwd: stored.cwd,
+        archived: stored.archived === true,
+        kind: stored.kind === "scratch" ? "scratch" : "folder",
+      };
     }
 
     const workspaces: Record<string, Workspace> = {};
@@ -85,7 +97,13 @@ export function loadWorkspaces(): RestoredWorkspaces | null {
       workspaceOrder.push(w.id);
       // Version-one stores have no project list; derive active projects from
       // their remembered session tabs during the migration.
-      if (!projects[w.cwd]) projects[w.cwd] = { cwd: w.cwd, archived: false };
+      if (!projects[w.cwd]) {
+        projects[w.cwd] = {
+          cwd: w.cwd,
+          archived: false,
+          kind: isScratchWorkspacePath(w.cwd) ? "scratch" : "folder",
+        };
+      }
     }
     if (!workspaceOrder.length && !Object.keys(projects).length) return null;
 
@@ -103,7 +121,7 @@ export function saveWorkspaces(state: RestoredWorkspaces): void {
     version: 1,
     projects: Object.values(state.projects)
       .filter((project) => project.cwd)
-      .map((project) => ({ cwd: project.cwd, archived: project.archived })),
+      .map((project) => ({ cwd: project.cwd, archived: project.archived, kind: project.kind })),
     workspaces: order.flatMap((id) => {
       const w = state.workspaces[id];
       if (!w?.cwd) return [];

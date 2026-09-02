@@ -209,6 +209,16 @@ export const bridge = {
     return invoke("sessions_list", { harness });
   },
 
+  /** Resolves and creates a fresh local app-owned scratch session directory. */
+  async scratchWorkspace(path?: string | null): Promise<string> {
+    return invoke("scratch_workspace", { path: path?.trim() || null });
+  },
+
+  /** Reads a still image from the OS clipboard without involving webview permissions. */
+  async clipboardImage(): Promise<ClipboardImage | null> {
+    return invoke("clipboard_image");
+  },
+
   async models(harness: HarnessId): Promise<ModelInfo[]> {
     return invoke("models_list", { harness });
   },
@@ -345,6 +355,11 @@ export const rpc = {
 
 export interface ImageAttachment {
   type: "image";
+  data: string;
+  mimeType: string;
+}
+
+export interface ClipboardImage {
   data: string;
   mimeType: string;
 }

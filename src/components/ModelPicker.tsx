@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Folder, Server } from "lucide-react";
 import type { ModelInfo } from "../lib/agent-state";
 import { useAppStore } from "../lib/agent-store";
+import { projectLabel } from "../lib/store/workspace";
 
 /** Closes a popover on an outside click or Escape. */
 function useDismiss(open: boolean, close: () => void) {
@@ -198,7 +199,7 @@ export function TargetChips() {
     if (typeof dir === "string") openWorkspace({ cwd: dir, target });
   };
 
-  const folder = cwd ? (cwd.split("/").filter(Boolean).pop() ?? cwd) : null;
+  const folder = cwd ? projectLabel(cwd) : null;
 
   return (
     <div className="mb-1.5 flex items-center gap-1.5">

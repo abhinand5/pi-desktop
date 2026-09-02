@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { RotateCw, Trash2 } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import { useAppStore } from "../lib/agent-store";
@@ -25,56 +25,67 @@ export default function TerminalView() {
   const closeWorkspace = useAppStore((s) => s.closeWorkspace);
   const host = useRef<HTMLDivElement>(null);
   const [, bump] = useReducer((n: number) => n + 1, 0);
+  const [session, setSession] = useState<TerminalSession | null>(null);
 
-  const session: TerminalSession | null =
-    workspaceId && cwd ? (getTerminal(workspaceId) ?? openTerminal({ workspaceId, program, cwd, host: target })) : null;
+  // Starting a pty changes application state, so acquire it after the view has
+  // committed rather than during render. The registry keeps the session alive
+  // across mounts; StrictMode's second effect pass simply adopts the same one.
+  useEffect(() => {
+    if (!workspaceId || !cwd) {
+      setSession(null);
+      return;
+    }
+    setSession(getTerminal(workspaceId) ?? openTerminal({ workspaceId, program, cwd, host: target }));
+  }, [workspaceId, cwd, program, target]);
+
+  const activeSession = session?.workspaceId === workspaceId ? session : null;
 
   // Adopt the persistent node, fit it to this container, and keep fitting.
   useEffect(() => {
     const parent = host.current;
-    if (!parent || !session) return;
-    parent.appendChild(session.element);
-    if (!session.term.element) session.term.open(session.element);
+    if (!parent || !activeSession) return;
+    parent.appendChild(activeSession.element);
+    if (!activeSession.term.element) activeSession.term.open(activeSession.element);
     const refit = () => {
       // A container of zero size (mid-transition, or hidden) would compute a
       // nonsense geometry and the shell would redraw itself to match.
-      if (parent.clientWidth > 0 && parent.clientHeight > 0) session.fit.fit();
+      if (parent.clientWidth > 0 && parent.clientHeight > 0) activeSession.fit.fit();
     };
     refit();
-    session.term.focus();
+    activeSession.term.focus();
 
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(refit);
     observer?.observe(parent);
-    session.onChange.add(bump);
+    activeSession.onChange.add(bump);
     return () => {
       observer?.disconnect();
-      session.onChange.delete(bump);
-      session.element.remove();
+      activeSession.onChange.delete(bump);
+      activeSession.element.remove();
     };
-  }, [session]);
+  }, [activeSession]);
 
   // The palette and the font live in CSS custom properties, so a change is
   // picked up by re-reading them rather than by rebuilding the terminal.
   useEffect(() => {
-    if (!session) return;
+    if (!activeSession) return;
     // A frame later: the attribute swap and the recomputed properties are not
     // simultaneous.
     const id = requestAnimationFrame(restyle);
     return () => cancelAnimationFrame(id);
-  }, [theme, glass, font, session]);
+  }, [theme, glass, font, activeSession]);
 
-  if (!workspaceId || !cwd || !session) return null;
+  if (!workspaceId || !cwd || !activeSession) return null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-ink-0">
       <div className="min-h-0 flex-1 px-3 pt-2" ref={host} />
 
-      {session.exit ? (
+      {activeSession.exit ? (
         <div className="mx-3 mb-2 flex items-center gap-3 rounded-md border border-line bg-ink-1 px-3 py-2">
           <span className="flex-1 text-sm text-ink-dim">
-            {session.exit.code === 0 || session.exit.code === null
+            {activeSession.exit.code === 0 || activeSession.exit.code === null
               ? "The process ended."
-              : `The process exited with code ${session.exit.code}.`}
+              : `The process exited with code ${activeSession.exit.code}.`}
           </span>
           <button
             onClick={() => {
@@ -102,11 +113,12 @@ export default function TerminalView() {
         </span>
         <span className="text-ink-dim">{PROGRAM_LABEL[program]}</span>
         {target ? <span className="text-teal">{target}</span> : null}
-        {session.error ? <span className="min-w-0 flex-1 truncate text-red">{session.error}</span> : null}
+        {activeSession.error ? <span className="min-w-0 flex-1 truncate text-red">{activeSession.error}</span> : null}
       </div>
     </div>
   );
 }
+
 
 const PROGRAM_LABEL: Record<string, string> = {
   shell: "shell",

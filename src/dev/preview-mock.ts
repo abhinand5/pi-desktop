@@ -166,6 +166,8 @@ const internals: PreviewInternals = {
 
 const SAMPLE_CWD = "/home/abhinand/dev/ai/pi-desktop";
 const SECOND_CWD = "/home/abhinand/dev/orca";
+const SCRATCH_CWD = "/home/abhinand/.local/share/dev.pidesktop.app/scratch-workspaces";
+let nextScratchSession = 1;
 const SESSION_FILE = "/home/abhinand/.omp/agent/sessions/preview-session.jsonl";
 
 const models: ModelInfo[] = [
@@ -886,6 +888,12 @@ function handleInvoke(command: string, args: Record<string, unknown>): unknown {
       return sessions;
     case "models_list":
       return models;
+    case "scratch_workspace": {
+      const root = typeof args.path === "string" && args.path.trim() ? args.path.trim() : SCRATCH_CWD;
+      return `${root.replace(/[\\/]+$/, "")}/session-preview-${nextScratchSession++}`;
+    }
+    case "clipboard_image":
+      return null;
     case "session_tree":
     case "session_tree_remote":
       return tree;

@@ -109,7 +109,6 @@ pub fn summarize(path: &Path, file_cap: u64) -> Result<Option<SessionSummary>> {
             Some("message") if derived_name.is_none() => {
                 derived_name = first_user_title(&v);
             }
-            Some("message") => {}
             Some("session_info") => {
                 if let Some(n) = v.get("name").and_then(|n| n.as_str()) {
                     let trimmed = n.trim();

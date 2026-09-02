@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use base64::Engine as _;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::ipc::Channel;
@@ -414,6 +416,111 @@ pub async fn fs_list(path: String) -> Result<Vec<FsEntry>, String> {
     out.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.cmp(&b.name)));
     Ok(out)
 }
+/// The app-owned default for generic sessions. A custom path can replace it
+/// without changing the session protocol or the local-only execution rule.
+fn default_scratch_workspace(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+
+    app.path()
+        .app_data_dir()
+        .map(|path| path.join("scratch-workspaces"))
+        .map_err(|e| format!("resolve app data directory: {e}"))
+}
+
+fn expand_scratch_home(path: &str, home: &Path) -> PathBuf {
+    if path == "~" {
+        return home.to_path_buf();
+    }
+    if let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\")) {
+        return home.join(rest);
+    }
+    PathBuf::from(path)
+}
+
+fn create_scratch_session(root: &Path) -> Result<PathBuf, String> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    for attempt in 0..100 {
+        let candidate = root.join(format!("session-{stamp:x}-{attempt}"));
+        match std::fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("create scratch session: {error}")),
+        }
+    }
+    Err("create scratch session: too many name collisions".into())
+}
+
+/// Resolves and creates a fresh local app-owned scratch session directory.
+/// Scratch sessions deliberately stay local, even when an SSH host is selected
+/// for project work.
+#[tauri::command]
+pub fn scratch_workspace(app: tauri::AppHandle, path: Option<String>) -> Result<String, String> {
+    use tauri::Manager;
+
+    let configured = path.as_deref().map(str::trim).filter(|value| !value.is_empty());
+    let root = if let Some(configured) = configured {
+        let home = app.path().home_dir().map_err(|e| format!("resolve home directory: {e}"))?;
+        let root = expand_scratch_home(configured, &home);
+        if !root.is_absolute() {
+            return Err("scratch workspace path must be absolute or start with ~".into());
+        }
+        root
+    } else {
+        default_scratch_workspace(&app)?
+    };
+
+    std::fs::create_dir_all(&root).map_err(|e| format!("create scratch workspace: {e}"))?;
+    create_scratch_session(&root).map(|path| path.to_string_lossy().into_owned())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardImage {
+    pub data: String,
+    pub mime_type: String,
+}
+
+fn encode_rgba_png(bytes: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
+    let mut output = Vec::new();
+    let mut encoder = png::Encoder::new(&mut output, width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().map_err(|e| format!("encode clipboard image: {e}"))?;
+    writer
+        .write_image_data(bytes)
+        .map_err(|e| format!("encode clipboard image pixels: {e}"))?;
+    writer.finish().map_err(|e| format!("finish clipboard image: {e}"))?;
+    Ok(output)
+}
+
+/// Reads a still image from the OS clipboard off the main thread. WebKitGTK can
+/// hide image data from paste events, and clipboard access can deadlock Linux
+/// webviews when performed on their UI thread.
+#[tauri::command]
+pub async fn clipboard_image() -> Result<Option<ClipboardImage>, String> {
+    tokio::task::spawn_blocking(|| {
+        let mut clipboard =
+            arboard::Clipboard::new().map_err(|e| format!("open clipboard: {e}"))?;
+        let image = match clipboard.get_image() {
+            Ok(image) => image,
+            Err(arboard::Error::ContentNotAvailable) => return Ok(None),
+            Err(error) => return Err(format!("read clipboard image: {error}")),
+        };
+        let data = encode_rgba_png(image.bytes.as_ref(), image.width as u32, image.height as u32)?;
+        Ok(Some(ClipboardImage {
+            data: base64::engine::general_purpose::STANDARD.encode(data),
+            mime_type: "image/png".into(),
+        }))
+    })
+    .await
+    .map_err(|e| format!("read clipboard image task: {e}"))?
+}
+
 
 #[derive(Debug, Serialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -835,5 +942,43 @@ pub async fn ssh_host_test(host: String, port: Option<u16>) -> HostProbe {
             }
         }
         Err(e) => HostProbe { reachable: false, detail: e.to_string() },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{create_scratch_session, encode_rgba_png, expand_scratch_home};
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn encodes_clipboard_pixels_as_png() {
+        let encoded = encode_rgba_png(&[255, 0, 0, 255], 1, 1).expect("valid PNG");
+
+        assert_eq!(&encoded[..8], b"\x89PNG\r\n\x1a\n");
+    }
+
+    #[test]
+    fn creates_unique_scratch_session_directories() {
+        let root = std::env::temp_dir().join(format!("pi-desktop-scratch-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("create test scratch root");
+
+        let first = create_scratch_session(&root).expect("create first scratch session");
+        let second = create_scratch_session(&root).expect("create second scratch session");
+
+        assert_ne!(first, second);
+        assert_eq!(first.parent(), Some(root.as_path()));
+        assert_eq!(second.parent(), Some(root.as_path()));
+        std::fs::remove_dir_all(root).expect("remove test scratch root");
+    }
+
+    #[test]
+    fn expands_home_relative_scratch_paths() {
+        let home = Path::new("/home/tester");
+
+        assert_eq!(expand_scratch_home("~", home), PathBuf::from("/home/tester"));
+        assert_eq!(expand_scratch_home("~/scratch", home), PathBuf::from("/home/tester/scratch"));
+        assert_eq!(expand_scratch_home("~\\scratch", home), PathBuf::from("/home/tester/scratch"));
+        assert_eq!(expand_scratch_home("/tmp/scratch", home), PathBuf::from("/tmp/scratch"));
     }
 }

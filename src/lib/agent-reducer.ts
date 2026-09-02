@@ -134,7 +134,12 @@ function onMessageStart(state: AgentState, ev: HarnessEvent): AgentState {
   const msg = ev.message as Record<string, unknown> | undefined;
   const role = str(msg?.role);
   if (role === "user") {
-    return pushEntry(state, { kind: "user", text: messageText(msg) });
+    const imageCount = messageImageCount(msg);
+    return pushEntry(state, {
+      kind: "user",
+      text: messageText(msg),
+      ...(imageCount ? { imageCount } : {}),
+    });
   }
   if (role === "assistant") {
     return pushEntry(state, {
@@ -316,6 +321,14 @@ function messageText(msg: Record<string, unknown> | undefined): string {
     .map((b) => String(b.text ?? ""))
     .join("")
     .trim();
+}
+
+function messageImageCount(msg: Record<string, unknown> | undefined): number {
+  const content = msg?.content;
+  if (!Array.isArray(content)) return 0;
+  return content.filter((block) => {
+    return typeof block === "object" && block !== null && (block as Record<string, unknown>).type === "image";
+  }).length;
 }
 
 function messageBlocks(msg: Record<string, unknown> | undefined): ContentBlock[] {

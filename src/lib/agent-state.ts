@@ -50,7 +50,7 @@ export type ContentBlock =
   | { kind: "toolcall"; id: string; name: string; args: string };
 
 export type Entry =
-  | { kind: "user"; seq: number; text: string }
+  | { kind: "user"; seq: number; text: string; imageCount?: number }
   | {
       kind: "assistant";
       seq: number;

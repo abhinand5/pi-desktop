@@ -5,6 +5,7 @@ import { useAppStore } from "../lib/agent-store";
 import { formatDuration, formatRate, summarize } from "../lib/speed";
 import { columnWidth } from "../lib/layout";
 import { formatCost } from "../lib/format";
+import { projectLabel } from "../lib/store/workspace";
 
 /** Where you are and how much room is left — the two facts you check without
  *  meaning to, kept under the composer rather than in a panel. */
@@ -45,7 +46,9 @@ export default function ComposerStatusBar() {
     // The folder path used to lead this line and no longer does: it is already
     // on screen in the chip directly above, and it was taking the room the
     // meters needed. The branch keeps its `title`, so the full path is still a
-    // hover away.
+    // hover away — and where there is no branch it is the folder's name that
+    // stands in, not the path again. A scratch session lives under app data,
+    // is never a repo, and would otherwise print that whole path here.
     //
     // No `overflow-hidden` here, however tempting: the speed readout opens a
     // popover upward out of this row, and clipping the row clips the popover.
@@ -60,7 +63,7 @@ export default function ComposerStatusBar() {
         </span>
       ) : (
         <span className="min-w-0 truncate" title={cwd}>
-          {homeRelative(cwd)}
+          {projectLabel(cwd)}
         </span>
       )}
 
@@ -126,11 +129,17 @@ function SpeedReadout() {
   }, [open]);
 
   const session = useMemo(() => summarize(history), [history]);
-  const live = speed?.live ?? false;
+  // A turn has no rate of its own for its first ~120ms — under that the clock
+  // resolution dominates and `measure` declines to divide — so a live turn
+  // falls back to the session rather than unmounting the whole readout and
+  // putting it back a moment later, once per turn.
+  const liveRate = speed?.live ? speed.tokensPerSecond : null;
   // A resumed session has its remembered turns but no turn of its own yet, so
   // the average stands on its own until one runs.
-  const rate = live ? speed!.tokensPerSecond : (session.meanRate ?? speed?.tokensPerSecond ?? null);
+  const rate = liveRate ?? session.meanRate ?? speed?.tokensPerSecond ?? null;
   if (rate === null) return null;
+  // Only claim to be showing this turn when the number really is this turn's.
+  const live = rate === liveRate;
 
   return (
     <div ref={ref} className="relative shrink-0">
@@ -156,14 +165,18 @@ function SpeedReadout() {
           {speed ? (
             <div className="border-b border-line px-3 py-2">
               <div className="font-mono text-2xs tracking-wider text-ink-faint uppercase">
-                {live ? "this turn" : "last turn"}
+                {speed.live ? "this turn" : "last turn"}
               </div>
               <Stat label="To first token" value={formatDuration(speed.promptMs)} />
-              <Stat label="Generation" value={formatRate(speed.tokensPerSecond)} note={live ? "estimated" : undefined} />
+              <Stat
+                label="Generation"
+                value={formatRate(speed.tokensPerSecond)}
+                note={speed.live ? "estimated" : undefined}
+              />
               <Stat
                 label="Output"
                 value={speed.outputTokens !== null ? `${speed.outputTokens.toLocaleString()} tok` : "—"}
-                note={live ? "estimated" : undefined}
+                note={speed.live ? "estimated" : undefined}
               />
             </div>
           ) : null}
@@ -206,7 +219,3 @@ function Stat({ label, value, note }: { label: string; value: string; note?: str
   );
 }
 
-function homeRelative(path: string): string {
-  const home = path.match(/^\/(?:home|Users)\/[^/]+/)?.[0];
-  return home ? path.replace(home, "~") : path;
-}

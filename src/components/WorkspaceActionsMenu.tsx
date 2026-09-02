@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Archive, Trash2 } from "lucide-react";
 import { useAppStore } from "../lib/agent-store";
-import { projectName } from "../lib/store/workspace";
+import { projectLabel } from "../lib/store/workspace";
 
 export default function WorkspaceActionsMenu({ cwd, onClose }: { cwd: string; onClose: () => void }) {
   const project = useAppStore((s) => s.projects[cwd]);
@@ -9,6 +9,7 @@ export default function WorkspaceActionsMenu({ cwd, onClose }: { cwd: string; on
   const deleteProject = useAppStore((s) => s.deleteProject);
   const restoreProject = useAppStore((s) => s.restoreProject);
   const ref = useRef<HTMLDivElement>(null);
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -56,19 +57,45 @@ export default function WorkspaceActionsMenu({ cwd, onClose }: { cwd: string; on
             onClose();
           }}
         />
+      ) : confirmingArchive ? (
+        <div className="rounded-sm border border-amber/30 bg-amber/5 p-2">
+          <p className="mb-2 text-xs leading-snug text-ink-dim">
+            Archive {projectLabel(cwd, project.kind)} workspace? Open tabs will close and running agents will stop.
+            Sessions stay in History.
+          </p>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void mutate(() => archiveProject(cwd))}
+              aria-label="Archive workspace now"
+              className="flex-1 rounded-sm bg-amber/15 px-2 py-1 font-mono text-2xs text-amber hover:bg-amber/25 disabled:opacity-50"
+            >
+              {busy ? "archiving…" : "archive"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setConfirmingArchive(false)}
+              className="flex-1 rounded-sm border border-line px-2 py-1 font-mono text-2xs text-ink-faint hover:text-ink-text disabled:opacity-50"
+            >
+              cancel
+            </button>
+          </div>
+        </div>
       ) : (
         <Item
           icon={<Archive size={12} />}
           label="Archive workspace"
           hint="Hide it from the rail; keep every session"
-          onClick={() => void mutate(() => archiveProject(cwd))}
+          onClick={() => setConfirmingArchive(true)}
         />
       )}
       <div className="my-1 border-t border-line/70" />
       {confirmingDelete ? (
         <div className="rounded-sm border border-red/30 bg-red/5 p-2">
           <p className="mb-2 text-xs leading-snug text-ink-dim">
-            Delete {projectName(cwd)} workspace? Sessions stay in History.
+            Delete {projectLabel(cwd, project.kind)} workspace? Sessions stay in History.
           </p>
           <div className="flex gap-1.5">
             <button

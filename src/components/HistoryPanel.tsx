@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { FolderOpen, RotateCw, Search, Trash2, X } from "lucide-react";
 import type { SessionSummary } from "../lib/agent-state";
 import { useAppStore } from "../lib/agent-store";
-import { projectName, sessionLabel, shortAge } from "../lib/store/workspace";
+import { projectLabel, sessionLabel, shortAge } from "../lib/store/workspace";
 
 /**
  * Every session the agent has on disk, in one place.
@@ -161,7 +161,7 @@ function HistoryRow({
           {/* The project first: it is what you are actually scanning for. */}
           <span className="flex shrink-0 items-center gap-1 text-ink-dim">
             <FolderOpen size={9} />
-            {projectName(session.cwd)}
+            {projectLabel(session.cwd)}
           </span>
           <span className="shrink-0">{shortAge(session.timestamp)}</span>
           {session.model ? <span className="min-w-0 truncate">{session.model}</span> : null}

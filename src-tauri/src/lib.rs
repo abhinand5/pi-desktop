@@ -40,6 +40,8 @@ pub fn run() {
             runtime::auth_print_key,
             runtime::ssh_bootstrap,
             runtime::fs_list,
+            runtime::scratch_workspace,
+            runtime::clipboard_image,
             runtime::git_status,
             runtime::ssh_fs_list,
             runtime::ssh_fs_read,

@@ -16,7 +16,7 @@ function installLocalStorage() {
 
 function state(workspaces: Workspace[], activeIndex = 0) {
   return {
-    projects: Object.fromEntries(workspaces.map((w) => [w.cwd, { cwd: w.cwd, archived: false }])),
+    projects: Object.fromEntries(workspaces.map((w) => [w.cwd, { cwd: w.cwd, archived: false, kind: "folder" as const }])),
     workspaces: Object.fromEntries(workspaces.map((w) => [w.id, w])),
     workspaceOrder: workspaces.map((w) => w.id),
     activeWorkspaceId: workspaces[activeIndex]?.id ?? null,
@@ -45,7 +45,7 @@ describe("remembered workspaces", () => {
   });
 
   it("remembers an archived project with no open session tabs", () => {
-    const archived = { cwd: "/home/me/old-project", archived: true };
+    const archived = { cwd: "/home/me/old-project", archived: true, kind: "scratch" as const };
 
     saveWorkspaces({
       projects: { [archived.cwd]: archived },
@@ -55,6 +55,20 @@ describe("remembered workspaces", () => {
     });
 
     expect(loadWorkspaces()).toMatchObject({ projects: { [archived.cwd]: archived } });
+  });
+
+  it("preserves scratch project metadata across a restart", () => {
+    const cwd = "/home/me/.local/share/dev.pidesktop.app/scratch-workspaces";
+    const w = createWorkspace({ harness: "omp", cwd });
+
+    saveWorkspaces({
+      projects: { [cwd]: { cwd, archived: false, kind: "scratch" } },
+      workspaces: { [w.id]: w },
+      workspaceOrder: [w.id],
+      activeWorkspaceId: w.id,
+    });
+
+    expect(loadWorkspaces()?.projects[cwd]).toEqual({ cwd, archived: false, kind: "scratch" });
   });
 
   it("comes back idle — a stored runtime would point at a process that is gone", () => {

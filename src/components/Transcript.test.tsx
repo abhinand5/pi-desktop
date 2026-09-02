@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Transcript from "./Transcript";
 import { useAppStore } from "../lib/agent-store";
@@ -96,5 +96,14 @@ describe("Transcript", () => {
     });
 
     expect(root.scrollTop).toBe(200);
+  });
+
+  it("shows an image marker on user turns that included attachments", () => {
+    act(() => {
+      setAgent([{ kind: "user", seq: 1, text: "identify this", imageCount: 1 }]);
+    });
+    render(<Transcript />);
+
+    expect(screen.getByLabelText("1 image attached")).toHaveTextContent("1 image attached");
   });
 });

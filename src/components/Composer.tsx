@@ -24,6 +24,55 @@ interface Attachment extends ImageAttachment {
   size: number;
   previewUrl: string;
 }
+/** Clipboard images can arrive as items without appearing in `files`. */
+function clipboardFiles(data: DataTransfer): File[] {
+  const files = [...data.files];
+  if (files.length) return files;
+  return [...data.items]
+    .filter((item) => item.kind === "file")
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => file !== null);
+}
+
+/** Reads an image through the native clipboard path used by Tauri webviews. */
+async function nativeClipboardImage(): Promise<File | null> {
+  const image = await bridge.clipboardImage();
+  if (!image) return null;
+
+  const binary = atob(image.data);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const extension = image.mimeType.split("/")[1]?.replace(/[^a-z0-9]+/gi, "") || "bin";
+  return new File([bytes], `pasted-image.${extension}`, { type: image.mimeType });
+}
+
+async function fallbackClipboardImages(allowAsyncFallback: boolean): Promise<File[]> {
+  try {
+    const image = await nativeClipboardImage();
+    return image ? [image] : [];
+  } catch {
+    // Browser preview and older native builds can lack the native command.
+    return allowAsyncFallback ? asyncClipboardImages() : [];
+  }
+}
+
+/** WebKitGTK can hide image data from the paste event; async clipboard exposes it. */
+async function asyncClipboardImages(): Promise<File[]> {
+  if (!navigator.clipboard?.read) return [];
+  const items = await navigator.clipboard.read();
+  const files: File[] = [];
+  for (const [index, item] of items.entries()) {
+    const type = item.types.find((candidate) => candidate.startsWith("image/"));
+    if (!type) continue;
+    try {
+      const blob = await item.getType(type);
+      const extension = type.split("/")[1]?.replace(/[^a-z0-9]+/gi, "") || "bin";
+      files.push(new File([blob], `pasted-image-${index + 1}.${extension}`, { type: blob.type || type }));
+    } catch {
+      // One unavailable representation should not block other clipboard items.
+    }
+  }
+  return files;
+}
 
 /**
  * The composer.
@@ -194,7 +243,7 @@ export default function Composer() {
                 // The harness wants raw base64, not a data: URL.
                 data: url.slice(url.indexOf(",") + 1),
                 mimeType: file.type,
-                name: file.name,
+                name: file.name || "pasted-image",
                 size: file.size,
                 previewUrl: url,
               });
@@ -399,7 +448,6 @@ export default function Composer() {
           ))}
         </div>
       ) : null}
-
       <div
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
@@ -414,11 +462,24 @@ export default function Composer() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onPaste={(e) => {
-            const files = [...e.clipboardData.files];
+            const files = clipboardFiles(e.clipboardData);
             if (files.length) {
               e.preventDefault();
               void addFiles(files);
+              return;
             }
+
+            // GTK/WebKit may report no DataTransfer files or items for an
+            // image. Keep ordinary text paste native, and probe the native
+            // clipboard first. The async browser API is only a compatibility
+            // fallback when the native command is unavailable.
+            const types = [...e.clipboardData.types];
+            const allowAsyncFallback = !types.length || types.some((type) => type.startsWith("image/"));
+            void fallbackClipboardImages(allowAsyncFallback)
+              .then((images) => {
+                if (images.length) void addFiles(images);
+              })
+              .catch(() => {});
           }}
           onKeyDown={onKeyDown}
           placeholder={

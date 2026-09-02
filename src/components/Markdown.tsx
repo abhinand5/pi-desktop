@@ -1,9 +1,11 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import { highlight } from "../lib/highlight";
-
+import "katex/dist/katex.min.css";
 /**
  * Assistant prose.
  *
@@ -17,7 +19,8 @@ function MarkdownBody({ text }: { text: string }) {
   return (
     <div className="selectable space-y-3 text-md text-ink-text">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
         components={{
           h1: ({ children }) => (
             <h1 className="mt-5 mb-1.5 text-xl font-semibold tracking-tight text-ink-text first:mt-0">{children}</h1>

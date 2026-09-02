@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Sidebar from "./Sidebar";
 import { useAppStore } from "../lib/agent-store";
+import { bridge } from "../lib/bridge";
 import { createWorkspace } from "../lib/store/workspace";
 
 const cwd = "/home/abhinand/dev/g14-llm-configs";
@@ -15,7 +16,7 @@ beforeEach(() => {
   useAppStore.setState({
     sidebarOpen: true,
     harness: "omp",
-    projects: { [cwd]: { cwd, archived: false } },
+    projects: { [cwd]: { cwd, archived: false, kind: "folder" } },
     workspaces: { [workspace.id]: workspace },
     workspaceOrder: [workspace.id],
     activeWorkspaceId: workspace.id,
@@ -119,6 +120,10 @@ describe("Sidebar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Workspace actions for g14-llm-configs" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /^Archive workspace/ }));
+    expect(screen.getByText(/Open tabs will close and running agents will stop/)).toBeInTheDocument();
+    expect(useAppStore.getState().projects[cwd].archived).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive workspace now" }));
 
     await waitFor(() => expect(useAppStore.getState().projects[cwd].archived).toBe(true));
     expect(useAppStore.getState().workspaceOrder).toEqual([]);
@@ -140,5 +145,28 @@ describe("Sidebar", () => {
     expect(deleteProject).toHaveBeenCalledWith(cwd);
 
     useAppStore.setState({ deleteProject: originalDeleteProject });
+  });
+
+  it("starts a generic local scratch session from the rail", async () => {
+    const scratchCwd = "/home/me/.local/share/dev.pidesktop.app/scratch-workspaces/session-test";
+    vi.spyOn(bridge, "scratchWorkspace").mockResolvedValue(scratchCwd);
+    vi.spyOn(bridge, "sessions").mockResolvedValue([]);
+    vi.spyOn(bridge, "startRuntime").mockResolvedValue({
+      id: "rt-scratch",
+      harness: "omp",
+      pid: 1,
+      exited: false,
+      host: null,
+    });
+
+    render(<Sidebar />);
+    fireEvent.click(screen.getByRole("button", { name: "Start scratch session" }));
+
+    await waitFor(() => expect(useAppStore.getState().projects[scratchCwd]?.kind).toBe("scratch"));
+    const state = useAppStore.getState();
+    const workspace = state.workspaces[state.activeWorkspaceId!];
+    expect(workspace.cwd).toBe(scratchCwd);
+    expect(screen.getByRole("button", { name: "Collapse workspace scratch" })).toBeInTheDocument();
+    expect(workspace.target).toBeNull();
   });
 });

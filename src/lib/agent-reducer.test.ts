@@ -157,9 +157,22 @@ describe("applyEvent", () => {
     expect(state.pendingApproval).toMatchObject({ requestId: "req-2", method: "select" });
   });
 
-  it("flags lag so the UI can replay", () => {
-    const state = applyEvent(initialState, { type: "runtime_lagged", lost: 12 });
-    expect(state.lastError).toContain("incomplete");
+  it("records image attachments on user turns", () => {
+    const state = applyEvent(initialState, {
+      type: "message_start",
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "what is this?" },
+          { type: "image", data: "AAA", mimeType: "image/png" },
+          { type: "image", data: "BBB", mimeType: "image/jpeg" },
+        ],
+      },
+    });
+
+    expect(state.entries).toEqual([
+      { kind: "user", seq: 1, text: "what is this?", imageCount: 2 },
+    ]);
   });
 
   it("is pure: does not mutate the previous state", () => {

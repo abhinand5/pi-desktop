@@ -46,6 +46,16 @@ describe("settings slice", () => {
     const second = makeSlice();
     expect(second.slice.settings.thinkingPace).toBe("slow");
   });
+
+  it("defaults and persists the optional scratch workspace path", () => {
+    const first = makeSlice();
+
+    expect(first.slice.settings.scratchWorkspacePath).toBe("");
+    first.slice.setSetting("scratchWorkspacePath", "~/scratch");
+
+    const second = makeSlice();
+    expect(second.slice.settings.scratchWorkspacePath).toBe("~/scratch");
+  });
 });
 
 describe("appearance", () => {

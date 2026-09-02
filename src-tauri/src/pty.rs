@@ -20,7 +20,7 @@ use base64::Engine as _;
 use portable_pty::{Child, CommandBuilder, MasterPty, NativePtySystem, PtySize, PtySystem};
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
-use tauri::State;
+use tauri::{Manager, State};
 
 /// What the frontend asked to run. `Shell` is the user's own login shell; the
 /// harness variants run the real TUI rather than the RPC mode the chat uses.
@@ -195,15 +195,23 @@ pub async fn pty_open(
 
     // A blocking read on its own thread: the pty has no async interface, and a
     // terminal's whole job is to deliver bytes the moment they exist.
+    let reader_app = app.clone();
+    let reader_id = id.clone();
     std::thread::Builder::new()
         .name(format!("pty-reader-{id}"))
-        .spawn(move || pump(reader, on_event, entry))
+        .spawn(move || pump(reader, on_event, entry, reader_app, reader_id))
         .map_err(|e| format!("could not start the terminal reader: {e}"))?;
 
     Ok(info)
 }
 
-fn pump(mut reader: Box<dyn Read + Send>, channel: Channel<PtyEvent>, entry: Arc<PtyEntry>) {
+fn pump(
+    mut reader: Box<dyn Read + Send>,
+    channel: Channel<PtyEvent>,
+    entry: Arc<PtyEntry>,
+    app: tauri::AppHandle,
+    id: String,
+) {
     let mut buf = [0u8; 8192];
     loop {
         match reader.read(&mut buf) {
@@ -230,6 +238,16 @@ fn pump(mut reader: Box<dyn Read + Send>, channel: Channel<PtyEvent>, entry: Arc
         .ok()
         .and_then(|mut c| c.wait().ok())
         .map(|status| status.exit_code() as i32);
+
+    // A process that ended on its own — `exit`, a crash, a killed ssh — leaves
+    // an entry nothing will ever come back for. Without this only `pty_kill`
+    // ever cleared one, so a shell you exited stayed in the registry, held its
+    // master and child handles, and went on being reported as a live terminal.
+    if let Some(state) = app.try_state::<PtyState>() {
+        if let Ok(mut map) = state.ptys.lock() {
+            map.remove(&id);
+        }
+    }
     let _ = channel.send(PtyEvent::Exit { code });
 }
 

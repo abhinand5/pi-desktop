@@ -17,7 +17,7 @@ import { loadWorkspaces, saveWorkspaces } from "./persist";
 import { loadSpeedHistory } from "./speed-history";
 import type { AppStore, BashResult, RuntimeSlice, SessionStats, SliceOf } from "./types";
 import { closeTerminal } from "../terminals";
-import { BLANK, createWorkspace, project, type Workspace } from "./workspace";
+import { BLANK, createWorkspace, isScratchWorkspacePath, project, type ProjectKind, type Workspace } from "./workspace";
 
 /** Unwraps `{ data }` from a correlated RPC response. */
 function data<T>(response: unknown): T | undefined {
@@ -195,9 +195,11 @@ export const createRuntimeSlice = (
 
     openWorkspace(init) {
       const s = get();
+      const projectKind: ProjectKind =
+        init.projectKind ?? s.projects[init.cwd]?.kind ?? (isScratchWorkspacePath(init.cwd) ? "scratch" : "folder");
       // One workspace per folder+machine+agent; asking again just goes there.
-      // Resuming a session, or explicitly asking for a fresh one, opts out —
-      // those are the two ways a folder legitimately holds several at once.
+      // A fresh session opts out. Resuming reuses the workspace already on that
+      // exact session, while a different session path still gets its own tab.
       const existing = s.workspaceOrder
         .map((id) => s.workspaces[id])
         .find(
@@ -206,16 +208,17 @@ export const createRuntimeSlice = (
             w.target === (init.target ?? null) &&
             w.harness === (init.harness ?? s.harness) &&
             w.kind === (init.kind ?? "chat") &&
-            !init.sessionPath &&
-            !init.fresh,
+            (init.sessionPath
+              ? w.selectedSessionPath === init.sessionPath || w.sessionFile === init.sessionPath
+              : !init.fresh),
         );
       if (existing) {
         const savedProject = s.projects[init.cwd];
-        if (!savedProject || savedProject.archived) {
+        if (!savedProject || savedProject.archived || savedProject.kind !== projectKind) {
           set({
             projects: {
               ...s.projects,
-              [init.cwd]: { cwd: init.cwd, archived: false },
+              [init.cwd]: { cwd: init.cwd, archived: false, kind: projectKind },
             },
           });
           remember();
@@ -236,7 +239,7 @@ export const createRuntimeSlice = (
       set({
         projects: {
           ...s.projects,
-          [init.cwd]: { cwd: init.cwd, archived: false },
+          [init.cwd]: { cwd: init.cwd, archived: false, kind: projectKind },
         },
         workspaces: { ...s.workspaces, [w.id]: w },
         workspaceOrder: [w.id, ...s.workspaceOrder],
@@ -247,6 +250,27 @@ export const createRuntimeSlice = (
       void get().refreshSessions();
       ensureRunning(w.id);
       return w.id;
+    },
+
+    async openScratchWorkspace() {
+      try {
+        const cwd = await bridge.scratchWorkspace(get().settings.scratchWorkspacePath);
+        return get().openWorkspace({
+          cwd,
+          harness: get().harness,
+          target: null,
+          fresh: true,
+          projectKind: "scratch",
+        });
+      } catch (e) {
+        // A notice, not the active workspace's `connectionError`: the failure
+        // belongs to a workspace that was never created, and parking it on
+        // whichever one happens to be in front both misattributes it and — since
+        // `ensureRunning` refuses to start a workspace whose last start failed —
+        // leaves that workspace unable to auto-start for the rest of the session.
+        set({ notice: `Scratch workspace unavailable: ${String(e)}` });
+        return null;
+      }
     },
 
     openTerminal(init) {
@@ -300,10 +324,11 @@ export const createRuntimeSlice = (
       const ids = get().workspaceOrder.filter((id) => get().workspaces[id]?.cwd === cwd);
       for (const id of ids) await get().closeWorkspace(id);
 
+      const saved = get().projects[cwd];
       set({
         projects: {
           ...get().projects,
-          [cwd]: { cwd, archived: true },
+          [cwd]: { cwd, archived: true, kind: saved?.kind ?? (isScratchWorkspacePath(cwd) ? "scratch" : "folder") },
         },
       });
       remember();

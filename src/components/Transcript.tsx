@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, Loader2 } from "lucide-react";
+import { ArrowDown, Loader2, Paperclip } from "lucide-react";
 import type { Entry } from "../lib/agent-state";
 import { useAppStore } from "../lib/agent-store";
 import { describeTurnError } from "../lib/errors";
@@ -237,6 +237,15 @@ function EntryBody({ entry, entryId, last }: { entry: Entry; entryId: string | n
           <div className="selectable rounded-md bg-ink-1 px-3 py-2 text-md whitespace-pre-wrap text-ink-text">
             {entry.text}
           </div>
+          {entry.imageCount ? (
+            <div
+              className="mt-1.5 inline-flex items-center gap-1.5 rounded-sm border border-line bg-ink-2 px-2 py-1 font-mono text-2xs text-ink-faint"
+              aria-label={`${entry.imageCount} ${entry.imageCount === 1 ? "image" : "images"} attached`}
+            >
+              <Paperclip size={11} aria-hidden />
+              {entry.imageCount === 1 ? "1 image attached" : `${entry.imageCount} images attached`}
+            </div>
+          ) : null}
           {/* Actions and the branch chip share one row, so a turn with neither
               hovered nor branched costs no vertical space. */}
           {/* The chip leads: it is always visible, so the hover-only actions

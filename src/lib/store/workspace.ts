@@ -28,10 +28,13 @@ import type { SessionStats, Verdict } from "./types";
  */
 export type WorkspaceKind = "chat" | "terminal";
 
-/** A folder-level workspace shown as one group in the sidebar. */
+export type ProjectKind = "folder" | "scratch";
+
+/** A project container shown as one group in the sidebar. */
 export interface ProjectWorkspace {
   cwd: string;
   archived: boolean;
+  kind: ProjectKind;
 }
 
 export interface Workspace {
@@ -162,6 +165,17 @@ export function workspaceTitle(w: Workspace): string {
 
 export function projectName(cwd: string): string {
   return cwd.split("/").filter(Boolean).pop() || cwd || "no folder";
+}
+
+/** Whether a path belongs to a scratch workspace root. */
+export function isScratchWorkspacePath(cwd: string): boolean {
+  const normalized = cwd.replace(/\\/g, "/").toLowerCase();
+  return normalized.endsWith("/scratch-workspaces") || normalized.includes("/scratch-workspaces/");
+}
+
+/** The sidebar label for a project container. */
+export function projectLabel(cwd: string, kind?: ProjectKind): string {
+  return kind === "scratch" || isScratchWorkspacePath(cwd) ? "scratch" : projectName(cwd);
 }
 
 /** A session file's name, or its id when the harness never named it. */

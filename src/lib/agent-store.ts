@@ -143,8 +143,10 @@ export const useAppStore = create<AppStore>((set, get) => {
           const tracker = settleTurn(w.speedTracker, performance.now());
           const settled = tracker.sample;
           // Only a measurable turn joins the history — an unmeasured one would
-          // pull the session averages toward nothing.
-          if (settled?.tokensPerSecond == null) return { speedTracker: tracker };
+          // pull the session averages toward nothing. The readout still takes
+          // it: leaving the last live sample in place would strand the strip
+          // pulsing "this turn" over a turn that has already finished.
+          if (settled?.tokensPerSecond == null) return { speedTracker: tracker, speed: settled };
           const speedHistory = [...w.speedHistory, settled];
           saveSpeedHistory(w.sessionFile, speedHistory);
           return { speedTracker: tracker, speed: settled, speedHistory };

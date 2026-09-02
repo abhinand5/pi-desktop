@@ -22,7 +22,8 @@ describe("App", () => {
   it("opens on an invitation to act", () => {
     render(<App />);
     expect(screen.getByTestId("app-shell")).toBeInTheDocument();
-    expect(screen.getByText("Open a project to begin")).toBeInTheDocument();
+    expect(screen.getByText("Start a session")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Start a scratch session" })).not.toHaveLength(0);
   });
 
   it("draws its own window controls, since the window is undecorated", () => {

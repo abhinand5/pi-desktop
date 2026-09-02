@@ -13,6 +13,7 @@ import {
   Plug,
   Plus,
   Server,
+  Sparkles,
   SquareTerminal,
   Trash2,
   X,
@@ -22,7 +23,7 @@ import type { SessionSummary } from "../lib/agent-state";
 import { bridge } from "../lib/bridge";
 import { useAppStore } from "../lib/agent-store";
 import NewInProject, { type MenuAnchor } from "./NewInProject";
-import { projectName, sessionLabel, shortAge, workspaceTitle, type Workspace } from "../lib/store/workspace";
+import { projectLabel, sessionLabel, shortAge, workspaceTitle, type Workspace } from "../lib/store/workspace";
 import WorkspaceActionsMenu from "./WorkspaceActionsMenu";
 
 /**
@@ -61,6 +62,7 @@ function SidebarBody() {
   const setHarness = useAppStore((s) => s.setHarness);
   const resumeSession = useAppStore((s) => s.resumeSession);
   const restoreProject = useAppStore((s) => s.restoreProject);
+  const openScratchWorkspace = useAppStore((s) => s.openScratchWorkspace);
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<Record<string, boolean>>({});
   const [newMenu, setNewMenu] = useState<MenuAnchor | null>(null);
   const [workspaceMenu, setWorkspaceMenu] = useState<string | null>(null);
@@ -113,6 +115,13 @@ function SidebarBody() {
   const chooseFolder = async () => {
     const dir = await open({ directory: true, multiple: false });
     if (typeof dir === "string") openWorkspace({ cwd: dir });
+  };
+
+  const startScratch = async () => {
+    setNewMenu(null);
+    setWorkspaceMenu(null);
+    await openScratchWorkspace();
+    setRoute("chat");
   };
 
   return (
@@ -171,28 +180,47 @@ function SidebarBody() {
 
       <div className="mt-2 flex items-center justify-between px-4 pb-1">
         <span className="font-mono text-2xs tracking-wider text-ink-faint uppercase">workspaces</span>
-        <button
-          onClick={() => void chooseFolder()}
-          className="text-ink-faint hover:text-ink-text"
-          aria-label="Open another folder"
-          title="Open another folder"
-        >
-          <Plus size={13} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => void startScratch()}
+            className="rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-amber"
+            aria-label="Start scratch session"
+            title="Start a generic scratch session"
+          >
+            <Sparkles size={13} />
+          </button>
+          <button
+            onClick={() => void chooseFolder()}
+            className="rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-ink-text"
+            aria-label="Open another folder"
+            title="Open another folder"
+          >
+            <Plus size={13} />
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
         {groups.length === 0 && archivedProjects.length === 0 ? (
-          <button
-            onClick={() => void chooseFolder()}
-            className="flex w-full items-center gap-2 rounded-sm border border-dashed border-line px-2.5 py-2 text-left text-sm text-ink-dim hover:border-line-strong hover:text-ink-text"
-          >
-            <FolderOpen size={13} className="shrink-0 text-amber-dim" />
-            Open a folder to begin
-          </button>
+          <div className="space-y-1">
+            <button
+              onClick={() => void startScratch()}
+              className="flex w-full items-center gap-2 rounded-sm border border-amber-dim/40 bg-amber/5 px-2.5 py-2 text-left text-sm text-amber hover:bg-amber/10"
+            >
+              <Sparkles size={13} className="shrink-0" />
+              Start a scratch session
+            </button>
+            <button
+              onClick={() => void chooseFolder()}
+              className="flex w-full items-center gap-2 rounded-sm border border-dashed border-line px-2.5 py-2 text-left text-sm text-ink-dim hover:border-line-strong hover:text-ink-text"
+            >
+              <FolderOpen size={13} className="shrink-0 text-amber-dim" />
+              Open a folder to begin
+            </button>
+          </div>
         ) : (
           groups.map(([cwd, list]) => {
-            const project = projectName(cwd);
+            const project = projectLabel(cwd, projects[cwd]?.kind);
             const collapsed = collapsedWorkspaces[cwd] ?? false;
             return (
               <div key={cwd} className="mb-2">
@@ -215,6 +243,7 @@ function SidebarBody() {
                     ) : (
                       <ChevronDown size={12} className="shrink-0 text-ink-faint" />
                     )}
+                    {projects[cwd]?.kind === "scratch" ? <Sparkles size={11} className="shrink-0 text-amber" /> : null}
                     <span className="truncate text-sm text-ink-text">{project}</span>
                   </button>
                   <div className="flex shrink-0 items-center gap-0.5">
@@ -291,7 +320,7 @@ function SidebarBody() {
           <div className="mt-4 border-t border-line/60 pt-2">
             <div className="px-1 pb-1 font-mono text-2xs tracking-wider text-ink-faint uppercase">archived</div>
             {archivedProjects.map(({ cwd }) => {
-              const project = projectName(cwd);
+              const project = projectLabel(cwd, projects[cwd]?.kind);
               return (
                 <div key={cwd} className="group flex items-center gap-1 rounded-sm px-1 py-1">
                   <button

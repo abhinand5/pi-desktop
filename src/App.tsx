@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Sparkles } from "lucide-react";
 import Sidebar from "./components/Sidebar";
 import Titlebar from "./components/Titlebar";
 import Transcript from "./components/Transcript";
@@ -121,6 +122,7 @@ export default function App() {
 /** First run: an invitation to act, and nothing else. */
 function Welcome() {
   const setCwd = useAppStore((s) => s.setCwd);
+  const openScratchWorkspace = useAppStore((s) => s.openScratchWorkspace);
   const openDialog = async () => {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const dir = await open({ directory: true, multiple: false });
@@ -128,21 +130,29 @@ function Welcome() {
   };
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6">
+    <div className="flex flex-1 flex-col items-center justify-center gap-4">
       <div className="font-mono text-xl leading-none text-amber select-none">π</div>
       <div className="max-w-[400px] space-y-1.5 text-center">
-        <h1 className="text-lg font-medium text-ink-text">Open a project to begin</h1>
+        <h1 className="text-lg font-medium text-ink-text">Start a session</h1>
         <p className="text-md text-ink-dim">
-          Sessions run pi or omp inside your project folder. The agent keeps its own credentials and
-          session files; this app drives it and shows you the conversation tree.
+          Run pi or omp in a project folder, or start a generic scratch session without choosing one.
         </p>
       </div>
-      <button
-        onClick={() => void openDialog()}
-        className="h-8 rounded-md bg-amber px-4 font-mono text-sm text-on-accent hover:brightness-110"
-      >
-        Choose a folder
-      </button>
+      <div className="flex flex-col items-stretch gap-2 sm:flex-row">
+        <button
+          onClick={() => void openScratchWorkspace()}
+          className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-amber-dim/60 bg-amber/10 px-4 font-mono text-sm text-amber hover:bg-amber/20"
+        >
+          <Sparkles size={13} />
+          Start a scratch session
+        </button>
+        <button
+          onClick={() => void openDialog()}
+          className="h-8 rounded-md bg-amber px-4 font-mono text-sm text-on-accent hover:brightness-110"
+        >
+          Choose a folder
+        </button>
+      </div>
     </div>
   );
 }
