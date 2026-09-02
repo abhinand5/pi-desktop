@@ -127,8 +127,9 @@ jobs:
             }
             const cargoPath = "Cargo.toml";
             const cargo = fs.readFileSync(cargoPath, "utf8");
-            const next = cargo.replace(/^version = "[^"]+"$/m, `version = "${version}"`);
-            if (next === cargo) throw new Error("workspace Cargo.toml version not found");
+            const versionLine = /^([ \t]*version[ \t]*=[ \t]*)"[^"]+"/m;
+            if (!versionLine.test(cargo)) throw new Error("workspace Cargo.toml version not found");
+            const next = cargo.replace(versionLine, `$1"${version}"`);
             fs.writeFileSync(cargoPath, next);
           '
 
