@@ -1,13 +1,15 @@
 import { RotateCcw } from "lucide-react";
 import { useAppStore } from "../lib/agent-store";
 import { THEMES, type Settings, type ThinkingDisplay, type ThinkingPace } from "../lib/store/types";
-import { ModelChip, ThinkingChip } from "./ModelPicker";
+import { DefaultModelChip, ThinkingChip } from "./ModelPicker";
 
 /**
  * Preferences for the application and the active workspace.
  *
- * The model and thinking pickers appear alongside the composer too. Session
- * facts live in the status panel, which keeps this page focused on choices.
+ * The default model is global: it lives in the harness's own config and every
+ * new session starts on it, while the composer chip overrides it per session.
+ * Session facts live in the status panel, which keeps this page focused on
+ * choices.
  */
 
 export default function SettingsPage() {
@@ -32,12 +34,15 @@ export default function SettingsPage() {
           </button>
         </header>
 
-        <Group title="Agent and model" hint="Applies to the workspace you are in.">
-          <Row label="Model" help="Switching mid-session keeps the conversation.">
+        <Group title="Agent and model" hint="Applies to every new session. The chip by the composer overrides it for that session.">
+          <Row
+            label="Default model"
+            help="Kept in the agent's own config — ~/.pi/agent/settings.json or ~/.omp/agent/config.yml — so the CLI starts on it too."
+          >
             {/* Right-aligned so the panel opens back into the card. The chip
                 sits at the card's right edge, and a left-aligned panel would
                 run off it. */}
-            <ModelChip />
+            <DefaultModelChip />
           </Row>
           <Row label="Thinking level" help="How much reasoning the model does before answering.">
             <ThinkingChip />

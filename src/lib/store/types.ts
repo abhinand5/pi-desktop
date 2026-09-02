@@ -8,6 +8,7 @@
 
 import type { ModelInfo, SessionSummary } from "../agent-state";
 import type {
+  DefaultModelRef,
   HarnessId,
   PtyProgram,
   HostEntry,
@@ -107,12 +108,17 @@ export interface BashResult {
 export interface CatalogSlice {
   models: ModelInfo[];
   modelsError: string | null;
+  /** The harness's own default model, read from its native config. */
+  harnessDefault: DefaultModelRef | null;
   sessions: SessionSummary[];
   providers: ProviderEntry[];
   hosts: HostEntry[];
 
   loadModels(): Promise<void>;
   selectModel(model: ModelInfo): Promise<void>;
+  loadHarnessDefault(): Promise<void>;
+  /** Writes the harness-level default model. Applies to every new session. */
+  setDefaultModel(model: DefaultModelRef | null): Promise<void>;
   setThinking(level: string): Promise<void>;
   refreshSessions(): Promise<void>;
   deleteSession(path: string): Promise<void>;
@@ -282,9 +288,12 @@ export type UsageWindow = "all" | "30d" | "7d";
 
 export interface UsageSlice {
   usage: UsageReport | null;
+  /** Which agent's session files the report covers. */
+  usageHarness: "all" | HarnessId;
   usageWindow: UsageWindow;
   usageLoading: boolean;
   usageError: string | null;
+  setUsageHarness(harness: "all" | HarnessId): void;
   setUsageWindow(window: UsageWindow): void;
   loadUsage(): Promise<void>;
 }

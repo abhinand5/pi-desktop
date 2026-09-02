@@ -25,6 +25,7 @@ export default function App() {
   const runtime = useAppStore((s) => s.runtime);
   const refreshSessions = useAppStore((s) => s.refreshSessions);
   const loadModels = useAppStore((s) => s.loadModels);
+  const loadHarnessDefault = useAppStore((s) => s.loadHarnessDefault);
   const loadHosts = useAppStore((s) => s.loadHosts);
   const loadProviders = useAppStore((s) => s.loadProviders);
   const started = runtime !== null && !runtime.exited;
@@ -33,8 +34,9 @@ export default function App() {
     void refreshSessions();
     void loadHosts();
     void loadModels();
+    void loadHarnessDefault();
     void loadProviders();
-  }, [refreshSessions, loadHosts, loadModels, loadProviders]);
+  }, [refreshSessions, loadHosts, loadModels, loadHarnessDefault, loadProviders]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -139,6 +139,123 @@ fn write_omp_doc(path: &Path, doc: serde_yaml_ng::Value) -> Result<()> {
     Ok(())
 }
 
+// ---------- harness default model ----------
+
+/// The harness's own default model, read from its native config. This is what
+/// a session starts on when nothing is passed — the desktop seeds from it
+/// instead of overriding it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DefaultModel {
+    pub provider: String,
+    pub id: String,
+    /// pi: `defaultThinkingLevel`; omp: the `:level` suffix of the role, if set.
+    #[serde(default)]
+    pub thinking: Option<String>,
+}
+
+/// Reads pi's default model from its `settings.json` (`defaultProvider` +
+/// `defaultModel`). A missing file or an absent pair means "no default set";
+/// an unreadable file means the same to the UI, which can do nothing about it.
+pub fn read_pi_default_model(path: &Path) -> Option<DefaultModel> {
+    let bytes = std::fs::read(path).ok()?;
+    let doc: Value = serde_json::from_slice(&bytes).ok()?;
+    let provider = doc.get("defaultProvider")?.as_str()?.trim();
+    let id = doc.get("defaultModel")?.as_str()?.trim();
+    if provider.is_empty() || id.is_empty() {
+        return None;
+    }
+    Some(DefaultModel {
+        provider: provider.into(),
+        id: id.into(),
+        thinking: doc.get("defaultThinkingLevel").and_then(Value::as_str).map(str::to_string),
+    })
+}
+
+/// Sets or clears pi's default model in its `settings.json`. The file is
+/// manipulated as raw JSON so every other field survives the round-trip.
+pub fn write_pi_default_model(path: &Path, model: Option<(&str, &str)>) -> Result<()> {
+    let mut doc: Map<String, Value> = match std::fs::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes)?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Map::new(),
+        Err(e) => return Err(e.into()),
+    };
+    match model {
+        Some((provider, id)) => {
+            doc.insert("defaultProvider".into(), Value::String(provider.into()));
+            doc.insert("defaultModel".into(), Value::String(id.into()));
+        }
+        None => {
+            doc.remove("defaultProvider");
+            doc.remove("defaultModel");
+        }
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec_pretty(&Value::Object(doc))?)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Reads omp's default model from `config.yml`'s `modelRoles.default` —
+/// `provider/id` or `provider/id:level`.
+pub fn read_omp_default_model(path: &Path) -> Option<DefaultModel> {
+    let bytes = std::fs::read(path).ok()?;
+    let doc: serde_yaml_ng::Value = serde_yaml_ng::from_slice(&bytes).ok()?;
+    let role = doc.get("modelRoles")?.get("default")?.as_str()?;
+    parse_omp_role(role)
+}
+
+/// Sets or clears omp's default role in `config.yml`, preserving every other
+/// top-level key and role. The written role has no `:level` suffix, so the
+/// model's own default thinking level applies.
+pub fn write_omp_default_model(path: &Path, model: Option<(&str, &str)>) -> Result<()> {
+    let mut doc = read_omp_doc(path)?;
+    let Some(mapping) = doc.as_mapping_mut() else {
+        return Err(crate::error::Error::Other("config.yml root must be a mapping".into()));
+    };
+    match model {
+        Some((provider, id)) => {
+            let roles = mapping
+                .entry(serde_yaml_ng::Value::String("modelRoles".into()))
+                .or_insert_with(|| serde_yaml_ng::Value::Mapping(Default::default()));
+            let Some(roles) = roles.as_mapping_mut() else {
+                return Err(crate::error::Error::Other("config.yml modelRoles must be a mapping".into()));
+            };
+            roles.insert(
+                serde_yaml_ng::Value::String("default".into()),
+                serde_yaml_ng::Value::String(format!("{provider}/{id}")),
+            );
+        }
+        None => {
+            if let Some(roles) = mapping
+                .get_mut(serde_yaml_ng::Value::String("modelRoles".into()))
+                .and_then(|r| r.as_mapping_mut())
+            {
+                roles.remove(serde_yaml_ng::Value::String("default".into()));
+            }
+        }
+    }
+    write_omp_doc(path, doc)
+}
+
+/// Splits an omp model role into its parts. The level suffix is optional and
+/// the desktop never writes one back.
+fn parse_omp_role(role: &str) -> Option<DefaultModel> {
+    let (head, thinking) = match role.split_once(':') {
+        Some((h, level)) if !level.trim().is_empty() => (h, Some(level.trim().to_string())),
+        _ => (role, None),
+    };
+    let (provider, id) = head.split_once('/')?;
+    let (provider, id) = (provider.trim(), id.trim());
+    if provider.is_empty() || id.is_empty() {
+        return None;
+    }
+    Some(DefaultModel { provider: provider.into(), id: id.into(), thinking })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,5 +367,85 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("does-not-exist.json");
         assert!(read_pi_models(&path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn pi_default_model_round_trips_and_preserves_siblings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{ "theme": "dark", "defaultProvider": "deepseek", "defaultModel": "deepseek-v4", "defaultThinkingLevel": "max" }"#,
+        )
+        .unwrap();
+
+        let model = read_pi_default_model(&path).unwrap();
+        assert_eq!(model.provider, "deepseek");
+        assert_eq!(model.id, "deepseek-v4");
+        assert_eq!(model.thinking.as_deref(), Some("max"));
+
+        write_pi_default_model(&path, Some(("anthropic", "claude-opus-4-8"))).unwrap();
+        let model = read_pi_default_model(&path).unwrap();
+        assert_eq!(model.provider, "anthropic");
+        assert_eq!(model.id, "claude-opus-4-8");
+        // An untouched sibling key survives the rewrite.
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(doc["theme"], "dark");
+        assert_eq!(doc["defaultThinkingLevel"], "max");
+
+        write_pi_default_model(&path, None).unwrap();
+        assert!(read_pi_default_model(&path).is_none());
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(doc["theme"], "dark");
+        assert_eq!(doc["defaultThinkingLevel"], "max");
+    }
+
+    #[test]
+    fn pi_default_model_missing_or_absent_is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_pi_default_model(&dir.path().join("none.json")).is_none());
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{ "defaultProvider": "p" }"#).unwrap();
+        assert!(read_pi_default_model(&path).is_none());
+    }
+
+    #[test]
+    fn omp_default_model_round_trips_and_preserves_roles() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yml");
+        std::fs::write(
+            &path,
+            "theme:\n  dark: dark-cosmos\nmodelRoles:\n  advisor: openai-codex/gpt-5.6-sol:xhigh\n  default: openai-codex/gpt-5.6-luna:max\n",
+        )
+        .unwrap();
+
+        let model = read_omp_default_model(&path).unwrap();
+        assert_eq!(model.provider, "openai-codex");
+        assert_eq!(model.id, "gpt-5.6-luna");
+        assert_eq!(model.thinking.as_deref(), Some("max"));
+
+        write_omp_default_model(&path, Some(("deepseek", "deepseek-v4-pro"))).unwrap();
+        let model = read_omp_default_model(&path).unwrap();
+        assert_eq!(model.provider, "deepseek");
+        assert_eq!(model.id, "deepseek-v4-pro");
+        assert_eq!(model.thinking, None);
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("advisor:"), "other roles must survive: {raw}");
+        assert!(raw.contains("dark-cosmos"), "unrelated keys must survive: {raw}");
+
+        write_omp_default_model(&path, None).unwrap();
+        assert!(read_omp_default_model(&path).is_none());
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("advisor:"), "other roles must survive the clear: {raw}");
+    }
+
+    #[test]
+    fn omp_role_parses_bare_and_leveled_forms() {
+        let bare = parse_omp_role("z-ai/glm-5.3-flash").unwrap();
+        assert_eq!(bare.provider, "z-ai");
+        assert_eq!(bare.id, "glm-5.3-flash");
+        assert_eq!(bare.thinking, None);
+        assert!(parse_omp_role("no-slash").is_none());
+        assert!(parse_omp_role("/model").is_none());
     }
 }

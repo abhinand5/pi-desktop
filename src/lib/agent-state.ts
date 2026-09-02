@@ -21,6 +21,30 @@ export interface ModelInfo {
   selector: string | null;
 }
 
+/**
+ * The harness-level default as a catalog entry.
+ *
+ * The default model is read from the harness's own config before the catalog
+ * has loaded, so the chip can name it immediately; the fields the pickers
+ * display arrive later, when adoption swaps in the catalog entry.
+ */
+export function asModelInfo(ref: { provider: string; id: string } | null): ModelInfo | null {
+  if (!ref) return null;
+  return {
+    provider: ref.provider,
+    id: ref.id,
+    name: ref.id,
+    api: "",
+    baseUrl: null,
+    reasoning: false,
+    input: [],
+    contextWindow: 0,
+    maxTokens: 0,
+    thinkingLevels: [],
+    selector: null,
+  };
+}
+
 /** Session file summary from the read-only catalog scan. */
 export interface SessionSummary {
   path: string;

@@ -10,10 +10,17 @@ const WINDOWS: Array<{ value: UsageWindow; label: string }> = [
   { value: "7d", label: "7d" },
 ];
 
+/** Which agent's session files the report covers. */
+const AGENT_OPTIONS: Array<{ value: "all" | "pi" | "omp"; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "pi", label: "pi" },
+  { value: "omp", label: "omp" },
+];
+
 /**
- * What this agent has actually done.
+ * What the agents have actually done.
  *
- * Every figure is derived from the harness's own session files, so it covers
+ * Every figure is derived from the harnesses' own session files, so it covers
  * work done in the terminal as well as here — and it costs nothing to keep,
  * because the app stores no telemetry of its own.
  */
@@ -23,14 +30,15 @@ export default function UsagePage() {
   const error = useAppStore((s) => s.usageError);
   const window_ = useAppStore((s) => s.usageWindow);
   const setWindow = useAppStore((s) => s.setUsageWindow);
+  const usageHarness = useAppStore((s) => s.usageHarness);
+  const setUsageHarness = useAppStore((s) => s.setUsageHarness);
   const loadUsage = useAppStore((s) => s.loadUsage);
-  const harness = useAppStore((s) => s.harness);
 
   const [tab, setTab] = useState<"overview" | "models">("overview");
 
   useEffect(() => {
     void loadUsage();
-  }, [loadUsage, harness]);
+  }, [loadUsage, usageHarness]);
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -59,19 +67,36 @@ export default function UsagePage() {
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
           </button>
 
-          <div className="ml-auto flex overflow-hidden rounded-md border border-line">
-            {WINDOWS.map((w) => (
-              <button
-                key={w.value}
-                onClick={() => setWindow(w.value)}
-                aria-pressed={window_ === w.value}
-                className={`px-2.5 py-1.5 font-mono text-xs ${
-                  window_ === w.value ? "bg-ink-3 text-ink-text" : "text-ink-faint hover:bg-ink-2 hover:text-ink-dim"
-                }`}
-              >
-                {w.label}
-              </button>
-            ))}
+          <div className="ml-auto flex items-center gap-2">
+            <div className="flex overflow-hidden rounded-md border border-line">
+              {AGENT_OPTIONS.map((a) => (
+                <button
+                  key={a.value}
+                  onClick={() => setUsageHarness(a.value)}
+                  aria-pressed={usageHarness === a.value}
+                  title={`Sessions written by ${a.label === "All" ? "both agents" : a.label}`}
+                  className={`px-2.5 py-1.5 font-mono text-xs lowercase ${
+                    usageHarness === a.value ? "bg-ink-3 text-ink-text" : "text-ink-faint hover:bg-ink-2 hover:text-ink-dim"
+                  }`}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex overflow-hidden rounded-md border border-line">
+              {WINDOWS.map((w) => (
+                <button
+                  key={w.value}
+                  onClick={() => setWindow(w.value)}
+                  aria-pressed={window_ === w.value}
+                  className={`px-2.5 py-1.5 font-mono text-xs ${
+                    window_ === w.value ? "bg-ink-3 text-ink-text" : "text-ink-faint hover:bg-ink-2 hover:text-ink-dim"
+                  }`}
+                >
+                  {w.label}
+                </button>
+              ))}
+            </div>
           </div>
         </header>
 
@@ -80,7 +105,7 @@ export default function UsagePage() {
         ) : null}
 
         {!usage && loading ? (
-          <p className="py-16 text-center text-md text-ink-faint">Reading {harness}'s session files…</p>
+          <p className="py-16 text-center text-md text-ink-faint">Reading session files…</p>
         ) : null}
 
         {usage && usage.messages === 0 ? (

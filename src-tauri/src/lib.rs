@@ -27,6 +27,8 @@ pub fn run() {
             runtime::session_tree,
             runtime::session_delete,
             runtime::usage_report,
+            runtime::harness_default_model,
+            runtime::harness_default_model_set,
             runtime::session_tree_remote,
             runtime::models_list,
             runtime::providers_list,

@@ -306,6 +306,7 @@ pub async fn ssh_bootstrap(
     let install_url = match harness {
         HarnessParam::Pi => "https://pi.dev/install.sh",
         HarnessParam::Omp => "https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.sh",
+        HarnessParam::All => return Err("choose pi or omp before bootstrapping a host".into()),
     };
     let proxy = harness::proxy::start().await.map_err(|e| e.to_string())?;
     let spec = ssh::bootstrap_spec(&host, port, proxy.port(), install_url);
@@ -382,16 +383,59 @@ pub async fn session_delete(path: String) -> Result<(), String> {
     tokio::fs::remove_file(target).await.map_err(|e| e.to_string())
 }
 
-/// Aggregate usage across every session file the harness has written. Derived
-/// entirely from those files — the desktop keeps no telemetry of its own — so
-/// the figures cover TUI sessions as well as ones driven from here.
+/// Aggregate usage across every session file the harnesses have written.
+/// Derived entirely from those files — the desktop keeps no telemetry of its
+/// own — so the figures cover TUI sessions as well as ones driven from here.
+/// `all` merges pi and omp into one report.
 #[tauri::command]
 pub fn usage_report(harness: HarnessParam, since_days: Option<u32>) -> Result<harness::UsageReport, String> {
-    let h = by_id(match harness {
-        HarnessParam::Pi => HarnessId::Pi,
-        HarnessParam::Omp => HarnessId::Omp,
-    });
-    harness::usage::report(&*h, since_days).map_err(|e| e.to_string())
+    let harnesses: Vec<Arc<dyn harness::Harness>> = match harness {
+        HarnessParam::All => vec![by_id(HarnessId::Pi), by_id(HarnessId::Omp)],
+        HarnessParam::Pi => vec![by_id(HarnessId::Pi)],
+        HarnessParam::Omp => vec![by_id(HarnessId::Omp)],
+    };
+    harness::usage::report(&harnesses, since_days).map_err(|e| e.to_string())
+}
+
+/// The harness's own default model — what every new session starts on, read
+/// from pi's `settings.json` or omp's `config.yml`. `all` has no single
+/// answer, so the desktop only asks per harness.
+#[tauri::command]
+pub fn harness_default_model(harness: HarnessParam) -> Result<Option<harness::DefaultModel>, String> {
+    let (h, path) = default_model_config_path(harness)?;
+    let model = match h {
+        HarnessId::Pi => harness::config::read_pi_default_model(&path),
+        HarnessId::Omp => harness::config::read_omp_default_model(&path),
+    };
+    Ok(model)
+}
+
+/// Sets or clears the harness-level default model. This writes the harness's
+/// own config, so the CLI picks it up too.
+#[tauri::command]
+pub fn harness_default_model_set(
+    harness: HarnessParam,
+    model: Option<harness::DefaultModel>,
+) -> Result<(), String> {
+    let (h, path) = default_model_config_path(harness)?;
+    let pair = model.as_ref().map(|m| (m.provider.as_str(), m.id.as_str()));
+    let result = match h {
+        HarnessId::Pi => harness::config::write_pi_default_model(&path, pair),
+        HarnessId::Omp => harness::config::write_omp_default_model(&path, pair),
+    };
+    result.map_err(|e| e.to_string())
+}
+
+/// Resolves which harness's default-model config file is in play. The path
+/// lives in the harness's agent dir: pi keeps a `settings.json`, omp a
+/// `config.yml`.
+fn default_model_config_path(harness: HarnessParam) -> Result<(HarnessId, PathBuf), String> {
+    let id = harness.single()?;
+    let file = match id {
+        HarnessId::Pi => "settings.json",
+        HarnessId::Omp => "config.yml",
+    };
+    Ok((id, by_id(id).agent_dir().join(file)))
 }
 
 // ---------- Local project inspection (file picker, git readout) ----------
@@ -675,14 +719,11 @@ pub struct ProviderEntry {
 }
 
 fn provider_entries(harness: HarnessParam) -> Result<Vec<ProviderEntry>, String> {
-    let h = by_id(match harness {
-        HarnessParam::Pi => HarnessId::Pi,
-        HarnessParam::Omp => HarnessId::Omp,
-    });
+    let h = by_id(harness.single()?);
     let path = h.models_config_path();
-    let providers = match harness {
-        HarnessParam::Pi => harness::config::read_pi_models(&path),
-        HarnessParam::Omp => harness::config::read_omp_providers(&path),
+    let providers = match harness.single()? {
+        HarnessId::Pi => harness::config::read_pi_models(&path),
+        HarnessId::Omp => harness::config::read_omp_providers(&path),
     }
     .map_err(|e| e.to_string())?;
     Ok(providers
@@ -722,28 +763,22 @@ pub fn provider_upsert(harness: HarnessParam, id: String, mut config: Value) -> 
             return Err("config must include at least one model".into());
         }
     }
-    let h = by_id(match harness {
-        HarnessParam::Pi => HarnessId::Pi,
-        HarnessParam::Omp => HarnessId::Omp,
-    });
+    let h = by_id(harness.single()?);
     let path = h.models_config_path();
-    let result = match harness {
-        HarnessParam::Pi => harness::config::upsert_pi_provider(&path, &id, config),
-        HarnessParam::Omp => harness::config::upsert_omp_provider(&path, &id, config),
+    let result = match harness.single()? {
+        HarnessId::Pi => harness::config::upsert_pi_provider(&path, &id, config),
+        HarnessId::Omp => harness::config::upsert_omp_provider(&path, &id, config),
     };
     result.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn provider_remove(harness: HarnessParam, id: String) -> Result<(), String> {
-    let h = by_id(match harness {
-        HarnessParam::Pi => HarnessId::Pi,
-        HarnessParam::Omp => HarnessId::Omp,
-    });
+    let h = by_id(harness.single()?);
     let path = h.models_config_path();
-    let result = match harness {
-        HarnessParam::Pi => harness::config::remove_pi_provider(&path, &id),
-        HarnessParam::Omp => harness::config::remove_omp_provider(&path, &id),
+    let result = match harness.single()? {
+        HarnessId::Pi => harness::config::remove_pi_provider(&path, &id),
+        HarnessId::Omp => harness::config::remove_omp_provider(&path, &id),
     };
     result.map_err(|e| e.to_string())
 }
@@ -858,23 +893,34 @@ pub fn runtimes_list(state: State<'_, AppState>) -> Vec<RuntimeInfo> {
 pub enum HarnessParam {
     Pi,
     Omp,
+    All,
+}
+
+impl HarnessParam {
+    /// The one harness a single-harness command needs. `all` has no single
+    /// answer there, so it is rejected instead of silently picking one.
+    fn single(&self) -> Result<HarnessId, String> {
+        match self {
+            HarnessParam::Pi => Ok(HarnessId::Pi),
+            HarnessParam::Omp => Ok(HarnessId::Omp),
+            HarnessParam::All => Err("choose pi or omp — there is no shared catalog".into()),
+        }
+    }
 }
 
 #[tauri::command]
 pub fn sessions_list(harness: HarnessParam) -> Vec<harness::SessionSummary> {
-    let h = by_id(match harness {
-        HarnessParam::Pi => HarnessId::Pi,
-        HarnessParam::Omp => HarnessId::Omp,
-    });
-    harness::sessions::scan(&*h).unwrap_or_default()
+    // The history panel is per-harness; `all` arrives only from misuse.
+    match harness.single() {
+        Ok(h) => harness::sessions::scan(&*by_id(h)).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
 }
+
 
 #[tauri::command]
 pub async fn models_list(harness: HarnessParam) -> Result<Vec<harness::ModelInfo>, String> {
-    let h = by_id(match harness {
-        HarnessParam::Pi => HarnessId::Pi,
-        HarnessParam::Omp => HarnessId::Omp,
-    });
+    let h = by_id(harness.single()?);
     harness::models::list_models_local(h).await.map_err(|e| e.to_string())
 }
 

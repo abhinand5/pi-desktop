@@ -8,7 +8,7 @@
  */
 
 import { applyEvent } from "../agent-reducer";
-import { initialState, type HarnessEvent, type ModelInfo } from "../agent-state";
+import { asModelInfo, initialState, type HarnessEvent, type ModelInfo } from "../agent-state";
 import { bridge, rpc, type BridgeEvent, type ImageAttachment } from "../bridge";
 import { describeRuntimeError } from "../errors";
 import { emptyTracker } from "../speed";
@@ -232,7 +232,10 @@ export const createRuntimeSlice = (
         target: init.target ?? null,
         sessionPath: init.sessionPath ?? null,
         thinking: s.settings ? s.thinking : "medium",
-        model: s.selectedModel,
+        // A fresh session starts on the harness's own default model — the one
+        // the settings page manages. Resuming keeps the workspace's current
+        // choice until the harness reports what the session file carries.
+        model: init.sessionPath ? s.selectedModel : asModelInfo(s.harnessDefault),
         kind: init.kind,
         program: init.program,
       });
@@ -362,13 +365,17 @@ export const createRuntimeSlice = (
       if (!id) {
         // No workspace yet: remember the choice for the first one opened.
         set({ ...project({ ...BLANK, harness }), harness });
+        set({ models: [], harnessDefault: null });
+        void get().loadModels();
+        void get().loadHarnessDefault();
         return;
       }
       if (get().workspaces[id].harness === harness) return;
       patch(id, { harness, selectedModel: null, tree: null, leafId: null });
       void get().stopRuntime();
-      set({ models: [] });
+      set({ models: [], harnessDefault: null });
       void get().loadModels();
+      void get().loadHarnessDefault();
       void get().refreshSessions();
     },
 

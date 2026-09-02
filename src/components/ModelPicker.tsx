@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Folder, Server } from "lucide-react";
-import type { ModelInfo } from "../lib/agent-state";
+import { asModelInfo, type ModelInfo } from "../lib/agent-state";
 import { useAppStore } from "../lib/agent-store";
 import { projectLabel } from "../lib/store/workspace";
 
@@ -54,16 +54,113 @@ const TRIGGER =
 /** The model in play, and the catalog to change it. Sits with the composer,
  *  where the choice is actually made. */
 export function ModelChip() {
-  const models = useAppStore((s) => s.models);
-  const modelsError = useAppStore((s) => s.modelsError);
   const selected = useAppStore((s) => s.selectedModel);
   const selectModel = useAppStore((s) => s.selectModel);
-  const loadModels = useAppStore((s) => s.loadModels);
-
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  return (
+    <ModelPopover label={selected ? selected.name || selected.id : "choose a model"} open={open} setOpen={setOpen}>
+      <ModelCatalogPanel
+        selected={selected}
+        onSelect={(m) => {
+          void selectModel(m);
+          setOpen(false);
+        }}
+      />
+    </ModelPopover>
+  );
+}
+
+/**
+ * The default model for every new session, read from — and written back to —
+ * the harness's own config. Lives on the settings page, where the global
+ * choice belongs; the composer chip is the per-session override.
+ */
+export function DefaultModelChip() {
+  const harnessDefault = useAppStore((s) => s.harnessDefault);
+  const setDefaultModel = useAppStore((s) => s.setDefaultModel);
+  const [open, setOpen] = useState(false);
+  return (
+    <ModelPopover
+      label={harnessDefault ? modelLabel(harnessDefault.id, harnessDefault.thinking) : "not set"}
+      title={harnessDefault ? `${harnessDefault.provider}/${harnessDefault.id}` : undefined}
+      open={open}
+      setOpen={setOpen}
+    >
+      <ModelCatalogPanel
+        selected={asModelInfo(harnessDefault)}
+        onSelect={(m) => {
+          void setDefaultModel({ provider: m.provider, id: m.id });
+          setOpen(false);
+        }}
+        clear={
+          harnessDefault
+            ? () => {
+                void setDefaultModel(null);
+                setOpen(false);
+              }
+            : undefined
+        }
+      />
+    </ModelPopover>
+  );
+}
+
+/** Chip label for a model id, with the configured thinking level if known. */
+function modelLabel(id: string, thinking?: string | null): string {
+  return thinking ? `${id} · ${thinking}` : id;
+}
+
+/** Trigger plus placement for a catalog popover. */
+function ModelPopover({
+  label,
+  title,
+  open,
+  setOpen,
+  children,
+}: {
+  label: string;
+  title?: string;
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  children: React.ReactNode;
+}) {
   const ref = useDismiss(open, () => setOpen(false));
   const place = usePlacement(open, ref, 380);
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen(!open)} aria-expanded={open} className={TRIGGER} title={title}>
+        <span className="max-w-[150px] truncate text-ink-text">{label}</span>
+        <ChevronDown size={11} className="text-ink-faint" />
+      </button>
+      {open ? (
+        <div
+          className={`overlay absolute right-0 z-50 w-[300px] overflow-hidden rounded-lg border border-line bg-ink-1 ${panelSide(place)}`}
+        >
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The model catalog: filter, grouped by provider, reload. `clear` offers
+ * removing the selection — the default chip uses it to unset the harness's
+ * own default.
+ */
+function ModelCatalogPanel({
+  selected,
+  onSelect,
+  clear,
+}: {
+  selected: ModelInfo | null;
+  onSelect: (m: ModelInfo) => void;
+  clear?: () => void;
+}) {
+  const models = useAppStore((s) => s.models);
+  const modelsError = useAppStore((s) => s.modelsError);
+  const loadModels = useAppStore((s) => s.loadModels);
+  const [query, setQuery] = useState("");
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -81,64 +178,56 @@ export function ModelChip() {
   }, [models, query]);
 
   return (
-    <div ref={ref} className="relative">
-      <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className={TRIGGER}>
-        <span className="max-w-[150px] truncate text-ink-text">
-          {selected ? selected.name || selected.id : "choose a model"}
-        </span>
-        <ChevronDown size={11} className="text-ink-faint" />
-      </button>
-
-      {open ? (
-        <div
-          className={`overlay absolute right-0 z-50 w-[300px] overflow-hidden rounded-lg border border-line bg-ink-1 ${panelSide(place)}`}
-        >
-          <input
-            autoFocus
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Filter models"
-            className="w-full border-b border-line bg-transparent px-3 py-2 text-base text-ink-text placeholder:text-ink-faint"
-          />
-          <div className="max-h-[300px] overflow-y-auto p-1">
-            {modelsError ? <div className="px-2 py-2 font-mono text-xs text-red">{modelsError}</div> : null}
-            {!modelsError && Object.keys(groups).length === 0 ? (
-              <div className="px-2 py-4 text-center text-sm text-ink-faint">
-                {models.length ? "No model matches that." : "No models configured yet."}
-              </div>
-            ) : null}
-            {Object.entries(groups).map(([provider, list]) => (
-              <div key={provider} className="mb-1">
-                <div className="px-2 py-1 font-mono text-2xs tracking-wider text-ink-faint uppercase">{provider}</div>
-                {list.map((m) => (
-                  <button
-                    key={`${m.provider}/${m.id}`}
-                    onClick={() => {
-                      void selectModel(m);
-                      setOpen(false);
-                    }}
-                    className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-ink-2 ${
-                      selected?.id === m.id && selected?.provider === m.provider ? "bg-ink-2" : ""
-                    }`}
-                  >
-                    <span className="min-w-0 flex-1 truncate text-base text-ink-text">{m.name || m.id}</span>
-                    {m.contextWindow ? (
-                      <span className="font-mono text-2xs text-ink-faint">{Math.round(m.contextWindow / 1000)}k</span>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
+    <>
+      <input
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Filter models"
+        className="w-full border-b border-line bg-transparent px-3 py-2 text-base text-ink-text placeholder:text-ink-faint"
+      />
+      <div className="max-h-[300px] overflow-y-auto p-1">
+        {modelsError ? <div className="px-2 py-2 font-mono text-xs text-red">{modelsError}</div> : null}
+        {!modelsError && Object.keys(groups).length === 0 ? (
+          <div className="px-2 py-4 text-center text-sm text-ink-faint">
+            {models.length ? "No model matches that." : "No models configured yet."}
+          </div>
+        ) : null}
+        {Object.entries(groups).map(([provider, list]) => (
+          <div key={provider} className="mb-1">
+            <div className="px-2 py-1 font-mono text-2xs tracking-wider text-ink-faint uppercase">{provider}</div>
+            {list.map((m) => (
+              <button
+                key={`${m.provider}/${m.id}`}
+                onClick={() => onSelect(m)}
+                className={`flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-ink-2 ${
+                  selected?.id === m.id && selected?.provider === m.provider ? "bg-ink-2" : ""
+                }`}
+              >
+                <span className="min-w-0 flex-1 truncate text-base text-ink-text">{m.name || m.id}</span>
+                {m.contextWindow ? (
+                  <span className="font-mono text-2xs text-ink-faint">{Math.round(m.contextWindow / 1000)}k</span>
+                ) : null}
+              </button>
             ))}
           </div>
-          <button
-            onClick={() => void loadModels()}
-            className="w-full border-t border-line py-2 text-center font-mono text-2xs text-ink-faint hover:text-ink-dim"
-          >
-            reload catalog
-          </button>
-        </div>
+        ))}
+      </div>
+      {clear ? (
+        <button
+          onClick={clear}
+          className="w-full border-t border-line py-2 text-center font-mono text-2xs text-ink-faint hover:text-ink-dim"
+        >
+          clear default
+        </button>
       ) : null}
-    </div>
+      <button
+        onClick={() => void loadModels()}
+        className="w-full border-t border-line py-2 text-center font-mono text-2xs text-ink-faint hover:text-ink-dim"
+      >
+        reload catalog
+      </button>
+    </>
   );
 }
 

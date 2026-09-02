@@ -75,7 +75,14 @@ export interface ProviderTestResult {
   modelCount: number | null;
   error: string | null;
 }
-
+/** The harness's own default model, read from its native config — pi's
+ *  `settings.json` or omp's `config.yml`. What every new session starts on. */
+export interface DefaultModelRef {
+  provider: string;
+  id: string;
+  /** Informational: pi's defaultThinkingLevel or an omp role's `:level`. */
+  thinking?: string | null;
+}
 
 /** One session entry, projected for the tree. Emitted identically by the Rust
  *  JSONL reader and by the bundled bridge extension, so the UI has one node
@@ -248,8 +255,19 @@ export const bridge = {
     return invoke("git_status", { cwd });
   },
 
-  /** Aggregate usage across every session the harness has written. */
-  async usageReport(harness: HarnessId, sinceDays: number | null): Promise<UsageReport> {
+  /** The harness-level default model, read from its native config. */
+  async harnessDefaultModel(harness: HarnessId): Promise<DefaultModelRef | null> {
+    return invoke("harness_default_model", { harness });
+  },
+
+  /** Writes the harness-level default model into the harness's own config, so
+   *  the CLI starts on it too. `null` clears it. */
+  async setHarnessDefaultModel(harness: HarnessId, model: DefaultModelRef | null): Promise<void> {
+    return invoke("harness_default_model_set", { harness, model });
+  },
+
+  /** Aggregate usage across the sessions the given agent (or both) wrote. */
+  async usageReport(harness: HarnessId | "all", sinceDays: number | null): Promise<UsageReport> {
     return invoke("usage_report", { harness, sinceDays });
   },
 

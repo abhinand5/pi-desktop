@@ -9,6 +9,7 @@ import type { CatalogSlice, SliceOf } from "./types";
 export const createCatalogSlice: SliceOf<CatalogSlice> = (set, get) => ({
   models: [],
   modelsError: null,
+  harnessDefault: null,
   sessions: [],
   providers: [],
   hosts: [],
@@ -42,6 +43,22 @@ export const createCatalogSlice: SliceOf<CatalogSlice> = (set, get) => ({
     if (get().runtime && !get().runtime?.exited) {
       await get().rawCommand(rpc.setModel(model.provider, model.id));
     }
+  },
+
+  async loadHarnessDefault() {
+    try {
+      set({ harnessDefault: await bridge.harnessDefaultModel(get().harness) });
+    } catch {
+      // No readable config means no configured default; the harness then
+      // picks its own fallback, which the chip adopts once the session boots.
+      set({ harnessDefault: null });
+    }
+  },
+
+  async setDefaultModel(model) {
+    await bridge.setHarnessDefaultModel(get().harness, model);
+    // Re-read rather than trusting the write: the UI shows what stuck.
+    await get().loadHarnessDefault();
   },
 
   async setThinking(level) {

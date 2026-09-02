@@ -212,6 +212,14 @@ const models: ModelInfo[] = [
   },
 ];
 
+/** The harness's own default model, mutable so the settings page's
+ *  write-through can be exercised in the preview. */
+let harnessDefaultModel: { provider: string; id: string; thinking?: string | null } | null = {
+  provider: "z-ai",
+  id: "glm-5.3-flash",
+  thinking: "max",
+};
+
 const commands: HarnessCommand[] = [
   { name: "compact", description: "Compact the current session", source: "extension" },
   { name: "review", description: "Review the current changes", source: "skill", location: "project" },
@@ -658,7 +666,8 @@ function handleRuntimeRequest(args: Record<string, unknown>) {
   }
 }
 
-function usageReport(harness: HarnessName, sinceDays: number | null): UsageReport {
+function usageReport(harness: HarnessName | "all", sinceDays: number | null): UsageReport {
+  if (harness === "all") return mergeUsage(usageReport("pi", sinceDays), usageReport("omp", sinceDays));
   const span = sinceDays ?? 150;
   const now = new Date("2026-08-31T12:00:00Z");
   const byDay: UsageReport["byDay"] = [];
@@ -746,6 +755,83 @@ function dateKey(now: Date, age: number) {
   const date = new Date(now);
   date.setUTCDate(date.getUTCDate() - age);
   return date.toISOString().slice(0, 10);
+}
+
+/** Adds two per-agent reports into one, recomputing everything that is
+ *  derived from the day table — streaks, favorite model, first/last day. */
+function mergeUsage(a: UsageReport, b: UsageReport): UsageReport {
+  const days = new Map<string, UsageReport["byDay"][number]>();
+  for (const day of [...a.byDay, ...b.byDay]) {
+    const entry = days.get(day.date);
+    if (entry) {
+      entry.sessions += day.sessions;
+      entry.messages += day.messages;
+      entry.tokens += day.tokens;
+    } else {
+      days.set(day.date, { ...day });
+    }
+  }
+  const byDay = [...days.values()];
+
+  const models = new Map<string, UsageReport["byModel"][number]>();
+  for (const row of [...a.byModel, ...b.byModel]) {
+    const entry = models.get(row.model);
+    if (entry) {
+      entry.messages += row.messages;
+      entry.tokens = {
+        input: entry.tokens.input + row.tokens.input,
+        output: entry.tokens.output + row.tokens.output,
+        cacheRead: entry.tokens.cacheRead + row.tokens.cacheRead,
+        cacheWrite: entry.tokens.cacheWrite + row.tokens.cacheWrite,
+        total: entry.tokens.total + row.tokens.total,
+      };
+      entry.cost += row.cost;
+    } else {
+      models.set(row.model, { ...row, tokens: { ...row.tokens } });
+    }
+  }
+  const byModel = [...models.values()].sort((x, y) => y.tokens.total - x.tokens.total);
+
+  const dates = new Set(byDay.map((day) => day.date));
+  const span = new Date("2026-08-31T12:00:00Z");
+  let currentStreak = 0;
+  for (let age = 0; dates.has(dateKey(span, age)); age += 1) currentStreak += 1;
+  let longestStreak = 0;
+  let run = 0;
+  for (let age = 150 - 1; age >= 0; age -= 1) {
+    if (dates.has(dateKey(span, age))) run += 1;
+    else {
+      longestStreak = Math.max(longestStreak, run);
+      run = 0;
+    }
+  }
+  longestStreak = Math.max(longestStreak, run);
+
+  const tokens = {
+    input: a.tokens.input + b.tokens.input,
+    output: a.tokens.output + b.tokens.output,
+    cacheRead: a.tokens.cacheRead + b.tokens.cacheRead,
+    cacheWrite: a.tokens.cacheWrite + b.tokens.cacheWrite,
+    total: a.tokens.total + b.tokens.total,
+  };
+  return {
+    sessions: a.sessions + b.sessions,
+    messages: a.messages + b.messages,
+    userMessages: a.userMessages + b.userMessages,
+    assistantMessages: a.assistantMessages + b.assistantMessages,
+    toolCalls: a.toolCalls + b.toolCalls,
+    tokens,
+    cost: Number((a.cost + b.cost).toFixed(2)),
+    activeDays: byDay.length,
+    currentStreak,
+    longestStreak,
+    peakHour: Math.max(a.peakHour ?? 0, b.peakHour ?? 0) || null,
+    favoriteModel: byModel[0]?.model ?? null,
+    byModel,
+    byDay,
+    firstDay: byDay[0]?.date ?? null,
+    lastDay: byDay.at(-1)?.date ?? null,
+  };
 }
 
 /**
@@ -909,7 +995,15 @@ function handleInvoke(command: string, args: Record<string, unknown>): unknown {
       return status;
     }
     case "usage_report":
-      return usageReport(args.harness === "pi" ? "pi" : "omp", typeof args.sinceDays === "number" ? args.sinceDays : null);
+      return usageReport(
+        args.harness === "pi" || args.harness === "omp" || args.harness === "all" ? args.harness : "omp",
+        typeof args.sinceDays === "number" ? args.sinceDays : null,
+      );
+    case "harness_default_model":
+      return harnessDefaultModel;
+    case "harness_default_model_set":
+      harnessDefaultModel = (args.model as typeof harnessDefaultModel) ?? null;
+      return null;
     case "providers_list":
       return providers;
     case "provider_upsert":

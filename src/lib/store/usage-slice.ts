@@ -7,9 +7,15 @@ const WINDOW_DAYS: Record<string, number | null> = { all: null, "30d": 30, "7d":
 
 export const createUsageSlice: SliceOf<UsageSlice> = (set, get) => ({
   usage: null,
+  usageHarness: "all",
   usageWindow: "all",
   usageLoading: false,
   usageError: null,
+
+  setUsageHarness(harness) {
+    set({ usageHarness: harness });
+    void get().loadUsage();
+  },
 
   setUsageWindow(window) {
     set({ usageWindow: window });
@@ -19,7 +25,7 @@ export const createUsageSlice: SliceOf<UsageSlice> = (set, get) => ({
   async loadUsage() {
     set({ usageLoading: true, usageError: null });
     try {
-      const report = await bridge.usageReport(get().harness, WINDOW_DAYS[get().usageWindow] ?? null);
+      const report = await bridge.usageReport(get().usageHarness, WINDOW_DAYS[get().usageWindow] ?? null);
       set({ usage: report, usageLoading: false });
     } catch (e) {
       set({ usageLoading: false, usageError: String((e as Error)?.message ?? e) });

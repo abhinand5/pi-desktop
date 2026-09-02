@@ -6,6 +6,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
+use std::sync::Arc;
 
 use serde::Serialize;
 
@@ -78,12 +79,14 @@ pub struct UsageReport {
     pub last_day: Option<String>,
 }
 
-/// Scans every session file for a harness. `since_days` limits the window;
-/// `None` covers everything on disk.
-pub fn report(harness: &dyn Harness, since_days: Option<u32>) -> Result<UsageReport> {
-    let root = harness.sessions_root();
+/// Scans every session file for the given harnesses. `since_days` limits the
+/// window; `None` covers everything on disk. Several harnesses merge into one
+/// report, so the numbers cover everything the desktop drives.
+pub fn report(harnesses: &[Arc<dyn Harness>], since_days: Option<u32>) -> Result<UsageReport> {
     let mut files = Vec::new();
-    collect_files(&root, &mut files);
+    for harness in harnesses {
+        collect_files(&harness.sessions_root(), &mut files);
+    }
 
     let mut out = UsageReport::default();
     let mut by_model: HashMap<String, ModelUsage> = HashMap::new();

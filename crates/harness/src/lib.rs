@@ -27,5 +27,6 @@ pub use harness::{by_id, Harness, HarnessId};
 pub use models::ModelInfo;
 pub use sessions::SessionSummary;
 pub use tree::{read_tree, SessionTree, TreeNode};
+pub use config::DefaultModel;
 pub use usage::UsageReport;
 pub use spec::{CommandSpec, LocalSpawner, SpawnOptions, Spawner};
