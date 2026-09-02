@@ -1,0 +1,149 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+    steps:
+      - name: Create or reuse GitHub release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if release_id="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json databaseId --jq '.databaseId' 2>/dev/null)"; then
+            echo "Using existing release $release_id for $tag"
+          else
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "pi-desktop $tag" \
+              --generate-notes
+            release_id="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json databaseId --jq '.databaseId')"
+          fi
+          echo "id=$release_id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            runner: ubuntu-22.04
+            args: "--ci --bundles deb,rpm"
+            upload_plain_binary: false
+          - name: linux_appimage
+            runner: ubuntu-22.04
+            args: "--ci --bundles appimage"
+            upload_plain_binary: false
+          - name: win
+            runner: windows-latest
+            args: "--ci --bundles nsis,msi"
+            upload_plain_binary: false
+          - name: win_portable
+            runner: windows-latest
+            args: "--ci --no-bundle"
+            upload_plain_binary: true
+          - name: macos
+            runner: macos-latest
+            args: "--ci --target universal-apple-darwin --bundles app,dmg"
+            upload_plain_binary: false
+
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Linux system dependencies
+        if: matrix.name == 'linux' || matrix.name == 'linux_appimage'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            file \
+            libappindicator3-dev \
+            libfuse2 \
+            libgtk-3-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libssl-dev \
+            libsoup-3.0-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            librsvg2-dev \
+            patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.name == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Align package versions with release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must be v<semver>; got $RELEASE_TAG" >&2
+            exit 1
+          fi
+          export RELEASE_VERSION="$version"
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const version = process.env.RELEASE_VERSION;
+            for (const path of ["package.json", "src-tauri/tauri.conf.json"]) {
+              const config = JSON.parse(fs.readFileSync(path, "utf8"));
+              config.version = version;
+              fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+            }
+            const cargoPath = "Cargo.toml";
+            const cargo = fs.readFileSync(cargoPath, "utf8");
+            const next = cargo.replace(/^version = "[^"]+"$/m, `version = "${version}"`);
+            if (next === cargo) throw new Error("workspace Cargo.toml version not found");
+            fs.writeFileSync(cargoPath, next);
+          '
+
+      - name: Build and upload ${{ matrix.name }}
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: ${{ matrix.name == 'macos' && '-' || '' }}
+        with:
+          releaseId: ${{ needs.prepare-release.outputs.release_id }}
+          tagName: ${{ github.ref_name }}
+          tauriScript: pnpm tauri
+          args: ${{ matrix.args }}
+          uploadPlainBinary: ${{ matrix.upload_plain_binary }}
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false
+          releaseAssetNamePattern: "pi-desktop-${{ matrix.name }}-[arch]-[bundle][ext]"
+          retryAttempts: 2
