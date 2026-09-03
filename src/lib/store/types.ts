@@ -166,20 +166,40 @@ export type ThinkingDisplay = "inline" | "collapsed" | "hidden";
 export type ThinkingPace = "instant" | "readable" | "slow";
 
 /**
- * The palettes in `index.css`. Adding one is a CSS block plus an entry here.
+ * How the app is built, as opposed to what colour it is.
+ *
+ * Classic is the original: every block outlined as a card, chrome-sized type,
+ * no motion. Foundry lets typography and alignment do the structural work,
+ * gives the transcript a reading size and a margin for its metadata, and makes
+ * state changes visible as they happen. Both are token sets — see `index.css`.
+ */
+export type SkinId = "classic" | "foundry";
+
+/**
+ * The looks in `index.css`. Adding one is a CSS block plus an entry here.
  *
  * `light` is not decoration: syntax highlighting ships both a light and a dark
  * set of token colours in the same markup, and this is what chooses between
- * them.
+ * them. `skin` rides along with the palette rather than being a second control,
+ * because "which look am I using" is one question and answering it twice is how
+ * you end up with Foundry's structure wearing a palette drawn for cards.
  */
 export const THEMES = [
-  { id: "phosphor", label: "Phosphor", hint: "Amber on graphite", light: false },
-  { id: "ember", label: "Ember", hint: "Warm charcoal", light: false },
-  { id: "nocturne", label: "Nocturne", hint: "Deep indigo", light: false },
-  { id: "moss", label: "Moss", hint: "Green and lime", light: false },
-  { id: "mono", label: "Mono", hint: "Neutral, quiet", light: false },
-  { id: "paper", label: "Paper", hint: "Light", light: true },
-] as const;
+  { id: "phosphor", label: "Phosphor", hint: "Amber on graphite", light: false, skin: "classic" },
+  { id: "ember", label: "Ember", hint: "Warm charcoal", light: false, skin: "classic" },
+  { id: "nocturne", label: "Nocturne", hint: "Deep indigo", light: false, skin: "classic" },
+  { id: "moss", label: "Moss", hint: "Green and lime", light: false, skin: "classic" },
+  { id: "mono", label: "Mono", hint: "Neutral, quiet", light: false, skin: "classic" },
+  { id: "paper", label: "Paper", hint: "Light", light: true, skin: "classic" },
+  { id: "foundry-night", label: "Foundry", hint: "Jade on slate", light: false, skin: "foundry" },
+  { id: "foundry-day", label: "Foundry Day", hint: "Jade on white", light: true, skin: "foundry" },
+] as const satisfies ReadonlyArray<{
+  id: string;
+  label: string;
+  hint: string;
+  light: boolean;
+  skin: SkinId;
+}>;
 
 export type ThemeId = (typeof THEMES)[number]["id"];
 
@@ -204,6 +224,9 @@ export interface Settings {
   summarizeOnJump: boolean;
   /** Reading column width for the transcript. */
   transcriptWidth: "narrow" | "wide";
+  /** How much air the interface takes. Comfortable is the authored spacing;
+   *  compact tightens the parts that scale, for a small window or a long day. */
+  density: "comfortable" | "compact";
   /** Show tool output collapsed until asked for. */
   collapseToolOutput: boolean;
 }
@@ -220,6 +243,7 @@ export const defaultSettings: Settings = {
   notifyOnSettle: true,
   summarizeOnJump: false,
   transcriptWidth: "narrow",
+  density: "comfortable",
   collapseToolOutput: true,
 };
 

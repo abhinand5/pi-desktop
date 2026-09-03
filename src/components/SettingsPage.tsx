@@ -85,42 +85,61 @@ export default function SettingsPage() {
 
         <Group title="Appearance">
           <div className="px-4 py-3">
-            <div className="text-md text-ink-text">Theme</div>
+            <div className="text-md text-ink-text">Look</div>
             <div className="mt-0.5 mb-2.5 text-sm text-ink-faint">
-              Each palette keeps the same one-accent rule — only the colour changes.
+              Classic outlines every block and keeps the app compact. Foundry lets type and
+              spacing do that work: a reading-sized transcript, its cost and timing in a margin
+              beside it, and state changes you can see happen.
             </div>
-            <div className="grid grid-cols-3 gap-1.5">
-              {THEMES.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setSetting("theme", t.id)}
-                  aria-pressed={settings.theme === t.id}
-                  className={`flex items-center gap-2 rounded-sm border px-2 py-1.5 text-left ${
-                    settings.theme === t.id
-                      ? "border-amber-dim/60 bg-amber/10"
-                      : "border-line hover:border-line-strong"
-                  }`}
-                >
-                  {/* Painted in its own palette: the swatch carries the theme
-                      attribute, so these are the real colours rather than a
-                      second copy of them kept in TypeScript. */}
-                  <span
-                    data-theme={t.id}
-                    aria-hidden
-                    className="flex h-6 w-6 shrink-0 flex-col overflow-hidden rounded-[4px] border border-line"
-                  >
-                    <span className="flex-1 bg-ink-0" />
-                    <span className="flex-1 bg-ink-2" />
-                    <span className="h-[6px] bg-amber" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm text-ink-text">{t.label}</span>
-                    <span className="block truncate font-mono text-2xs text-ink-faint">{t.hint}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
+            {(["classic", "foundry"] as const).map((skin) => (
+              <div key={skin} className="mb-3 last:mb-0">
+                <div className="mb-1.5 text-sm text-ink-dim">
+                  {skin === "classic" ? "Classic" : "Foundry"}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {THEMES.filter((t) => t.skin === skin).map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setSetting("theme", t.id)}
+                      aria-pressed={settings.theme === t.id}
+                      className={`flex items-center gap-2 rounded-sm border px-2 py-1.5 text-left ${
+                        settings.theme === t.id
+                          ? "border-amber-dim/60 bg-amber/10"
+                          : "border-line hover:border-line-strong"
+                      }`}
+                    >
+                      {/* Painted in its own palette: the swatch carries the theme
+                          attribute, so these are the real colours rather than a
+                          second copy of them kept in TypeScript. */}
+                      <span
+                        data-theme={t.id}
+                        aria-hidden
+                        className="flex h-6 w-6 shrink-0 flex-col overflow-hidden rounded-[4px] border border-line"
+                      >
+                        <span className="flex-1 bg-ink-0" />
+                        <span className="flex-1 bg-ink-2" />
+                        <span className="h-[6px] bg-amber" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm text-ink-text">{t.label}</span>
+                        <span className="block truncate font-mono text-2xs text-ink-faint">{t.hint}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
+          <Row label="Density" help="Compact tightens the spacing around everything but the transcript's text.">
+            <Segmented
+              value={settings.density}
+              onChange={(v) => setSetting("density", v as Settings["density"])}
+              options={[
+                { value: "comfortable", label: "comfortable" },
+                { value: "compact", label: "compact" },
+              ]}
+            />
+          </Row>
           <Row
             label="Terminal font"
             help="Leave empty for the built-in stack, which prefers a Nerd Font Mono so a TUI's glyphs land in one cell."

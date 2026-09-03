@@ -30,7 +30,7 @@ export default function ThinkingStream({
   if (display === "hidden" || !text.trim()) return null;
 
   return (
-    <div className="rounded-md border border-line/60 bg-ink-1/40">
+    <div className="rounded-md border border-edge/60 bg-ink-1/40">
       <button
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}

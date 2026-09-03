@@ -195,7 +195,7 @@ function ModelCatalogPanel({
         ) : null}
         {Object.entries(groups).map(([provider, list]) => (
           <div key={provider} className="mb-1">
-            <div className="px-2 py-1 font-mono text-2xs tracking-wider text-ink-faint uppercase">{provider}</div>
+            <div className="eyebrow px-2 py-1 font-mono text-2xs tracking-wider text-ink-faint uppercase">{provider}</div>
             {list.map((m) => (
               <button
                 key={`${m.provider}/${m.id}`}

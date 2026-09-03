@@ -81,7 +81,7 @@ export default function TreeRail() {
   return (
     <aside className="flex w-[340px] shrink-0 flex-col border-l border-line bg-ink-1">
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-3">
-        <span className="font-mono text-2xs tracking-wider text-ink-dim uppercase">conversation tree</span>
+        <span className="eyebrow font-mono text-2xs tracking-wider text-ink-dim uppercase">conversation tree</span>
         <button
           onClick={() => void refreshTree()}
           aria-label="Reload the tree"

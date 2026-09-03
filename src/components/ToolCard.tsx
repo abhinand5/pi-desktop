@@ -24,7 +24,7 @@ export default function ToolCard({ tool }: { tool: ToolEntry }) {
   const long = lines > 12;
 
   return (
-    <div className="overflow-hidden rounded-md border border-line bg-ink-1 text-sm">
+    <div className="overflow-hidden rounded-md border border-edge bg-ink-1 text-sm">
       <div className="flex items-center gap-2 px-3 py-1.5">
         <span
           className={`font-mono ${running ? "text-teal" : tool.status === "error" ? "text-red" : "text-ink-dim"}`}
@@ -33,7 +33,7 @@ export default function ToolCard({ tool }: { tool: ToolEntry }) {
         </span>
         <span className="shrink-0 font-mono text-xs text-ink-text">{tool.name}</span>
         <ToolArgs args={tool.args} />
-        <span className="ml-auto shrink-0 font-mono text-2xs tracking-wider uppercase">
+        <span className="eyebrow ml-auto shrink-0 font-mono text-2xs tracking-wider uppercase">
           {running ? (
             <span className="text-teal">running</span>
           ) : tool.status === "error" ? (

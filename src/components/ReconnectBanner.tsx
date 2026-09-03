@@ -27,7 +27,7 @@ export default function ReconnectBanner() {
       }`}
     >
       <div className="min-w-0 flex-1">
-        <div className={`font-mono text-2xs tracking-wider uppercase ${unverifiable ? "text-amber" : "text-ink-faint"}`}>
+        <div className={`eyebrow font-mono text-2xs tracking-wider uppercase ${unverifiable ? "text-amber" : "text-ink-faint"}`}>
           {unverifiable ? "connection lost" : "session ended"}
         </div>
         <div className="text-sm text-ink-dim">

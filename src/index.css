@@ -91,6 +91,37 @@
   /* Control heights, so every button in a row lines up without guessing. */
   --spacing-control: 28px;
   --spacing-control-sm: 24px;
+
+  /* ── Structural tokens ───────────────────────────────────────────────────
+     A palette is not a design. These are the decisions a *skin* makes that a
+     theme cannot: whether a block is separated by a border or by air, how much
+     air, how far the reading column runs, and how long a state change takes to
+     show. Components read them the same way they read a colour, so a second
+     skin is a second set of values rather than a second set of components.
+     ───────────────────────────────────────────────────────────────────────── */
+
+  /* The edge of a block. Classic draws every block as a card, so this is the
+     card's line; a skin that separates with air sets it to transparent and
+     nothing else has to know. */
+  --color-edge: var(--color-line);
+  /* The surface a block sits on, which is not always the surface behind it. */
+  --color-block: var(--color-ink-1);
+
+  /* The transcript's margin column: where per-message cost, tokens and time
+     go when there is room for them beside the text instead of under it.
+     Zero in classic, which puts them under the message. */
+  --spacing-lane: 0px;
+  /* Air between one entry and the next. 16px is what `space-y-4` was, which is
+     what the transcript used before this became a token — classic must not
+     shift by a pixel for having been made configurable. */
+  --spacing-entry: 16px;
+  /* Air inside a block. */
+  --spacing-block: 10px;
+
+  /* How long a state change takes to become visible. Zero means instant,
+     which is what classic has always been. */
+  --motion-fast: 0ms;
+  --motion-base: 0ms;
 }
 
 /* ─── Themes ───────────────────────────────────────────────────────────────
@@ -226,6 +257,141 @@
   --shadow-overlay: 0 12px 30px -10px rgb(90 80 60 / 0.28);
 }
 
+/* ─── Foundry ──────────────────────────────────────────────────────────────
+   The second skin.
+
+   A theme changes what colour the app is. A skin changes how it is built: what
+   separates one block from the next, how much air there is, how big the reading
+   text is, and whether a state change is visible as it happens. Every value
+   below is a token the components already read, so this whole block is the
+   skin — no component asks which one is on.
+
+   The idea it is built around: borders stop doing the structural work and
+   typography and alignment take it over. Classic draws every entry in the
+   transcript as a bordered card, which flattens a prompt, a reply, a tool call
+   and a code listing into the same object. Here the card's line goes
+   transparent, the surfaces do the separating, and the space that the borders
+   were spending goes to the reading column and to a margin beside it.
+   ───────────────────────────────────────────────────────────────────────── */
+[data-skin="foundry"] {
+  /* Blocks separate by surface and air, not by outline. The few places that
+     genuinely divide two things — a panel from the page — keep `line`. */
+  --color-edge: transparent;
+
+  /* Softer than classic's, and stepped: a control, a card and a floating panel
+     should not share one corner. */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Prose gets a reading size and the leading to go with it. The scale keeps
+     its shape — every step still sits where it sat relative to the others —
+     but the whole thing moves up, because 13px was sized for chrome and the
+     transcript was borrowing it. */
+  --text-sm: 12.5px;
+  --text-base: 13.5px;
+  --text-md: 15px;
+  --text-md--line-height: 1.7;
+  --text-ml: 17px;
+  --text-lg: 19px;
+  --text-lg--line-height: 1.3;
+  --text-xl: 24px;
+  --text-2xl: 32px;
+
+  /* Where per-message cost, tokens and timing go: beside the message, in a
+     column you can read down, instead of a dot-joined string interrupting the
+     line of the conversation. */
+  --spacing-lane: 84px;
+  --spacing-entry: 26px;
+  --spacing-block: 12px;
+
+  --spacing-control: 30px;
+  --spacing-control-sm: 26px;
+
+  /* Enough to see a change happen, not enough to wait for it. */
+  --motion-fast: 110ms;
+  --motion-base: 190ms;
+}
+
+/* Cool near-neutral rather than a tinted black, with two signals that mean
+   different things: jade is work in flight, ochre is what it costs. */
+[data-theme="foundry-night"] {
+  --color-ink-0: #101317;
+  --color-ink-1: #171b21;
+  --color-ink-2: #1e232b;
+  --color-ink-3: #283039;
+  --color-line: #242a32;
+  --color-line-strong: #38414d;
+  --color-ink-text: #e7e9ec;
+  --color-ink-dim: #9aa2ad;
+  --color-ink-faint: #6b737e;
+  --color-amber: #4fbca9;
+  --color-amber-dim: #2f7b6f;
+  --color-on-accent: #08110f;
+  --color-teal: #7aa7d8;
+  --color-green: #6fbf8e;
+  --color-red: #de7266;
+  --shadow-overlay: 0 20px 44px -14px rgb(0 0 0 / 0.72);
+}
+
+/* The same design in daylight. Not the warm cream every light theme reaches
+   for — a cool near-white, so the jade stays a signal rather than turning
+   olive against a yellow ground.
+
+   The elevation ladder inverts here, and it has to: on a dark ground a raised
+   surface is lighter, on a light ground it is darker. Carrying the dark
+   ordering over is what makes most light themes look washed out — the rail
+   ends up a shade off the page it is supposed to sit beside. */
+[data-theme="foundry-day"] {
+  --color-ink-0: #ffffff;
+  --color-ink-1: #f3f5f8;
+  --color-ink-2: #e8ecf1;
+  --color-ink-3: #d9e0e8;
+  --color-line: #dde3ea;
+  --color-line-strong: #b3bcc8;
+  --color-ink-text: #14171c;
+  --color-ink-dim: #5c636e;
+  --color-ink-faint: #8a919c;
+  --color-amber: #176f63;
+  --color-amber-dim: #10564d;
+  --color-on-accent: #ffffff;
+  --color-teal: #2f6497;
+  --color-green: #2f7a4f;
+  --color-red: #a93b2f;
+  --shadow-overlay: 0 14px 34px -12px rgb(20 30 50 / 0.18);
+}
+
+/* Motion, and only where something changed on its own or under your hand.
+   Scoped to the skin so classic stays as instant as it has always been, and
+   written against the tokens so `prefers-reduced-motion` can zero them in one
+   place rather than chasing every rule. */
+[data-skin="foundry"] button,
+[data-skin="foundry"] a,
+[data-skin="foundry"] [role="menuitem"],
+[data-skin="foundry"] [data-row] {
+  transition:
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    opacity var(--motion-fast) ease;
+}
+
+/* A turn finishing is the one moment worth an orchestrated animation: it is
+   the thing you came back to the window for. */
+@keyframes settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+[data-skin="foundry"] .settles {
+  animation: settle-in var(--motion-base) cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
 html,
 body,
 #root {
@@ -337,6 +503,95 @@ input:focus-visible {
   outline: none;
 }
 
+/* ─── The transcript row ───────────────────────────────────────────────────
+   One entry: the state spine, a fixed gutter, the content, and a margin the
+   skin may put metadata in.
+
+   The lane is zero-width in classic, so this one grid serves both skins and
+   the row keeps the exact geometry the old flex layout had. The gutter is a
+   real column rather than a `gap` because a `gap` would also apply after the
+   content and inset classic by 12px — a change to the skin that is supposed to
+   be untouched.
+   ───────────────────────────────────────────────────────────────────────── */
+.entry-row {
+  display: grid;
+  grid-template-columns: auto 12px minmax(0, 1fr) var(--spacing-lane);
+}
+
+/* Per-message cost, tokens and timing. Exactly one of these is ever visible:
+   under the message where there is no margin to put it in, beside it where
+   there is. Both are always rendered — which of them shows is the skin's
+   decision, not the component's. */
+.lane {
+  display: none;
+}
+.meta-inline {
+  display: flex;
+}
+[data-skin="foundry"] .lane {
+  display: block;
+}
+[data-skin="foundry"] .meta-inline {
+  display: none;
+}
+
+/* Foundry's prompt: a rule and a weight rather than a filled block. The fill
+   made your words look like another of the agent's cards; the rule says "this
+   one is yours" without spending a surface on it. */
+[data-skin="foundry"] .prompt-block {
+  background: transparent;
+  border-left: 2px solid var(--color-amber-dim);
+  border-radius: 0;
+  padding-left: 12px;
+  font-weight: 450;
+}
+
+/* A small label naming the section or state that follows it.
+   Classic sets these tracked-out and uppercase; Foundry does not, because an
+   interface where every label shouts has no way left to raise its voice. The
+   class exists so that is one decision in one place rather than eleven. */
+[data-skin="foundry"] .eyebrow {
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-family: var(--font-sans);
+}
+
+/* A code listing needs a surface once it no longer has an outline. Classic
+   sinks it to the page ground and draws a line around it; here the ground is
+   the page, so the block has to rise instead. */
+[data-skin="foundry"] .code-block {
+  background: var(--color-ink-2);
+}
+
+/* The rail's second line: what a session has spent and how full its window is.
+   Classic's rows are one line tall and stay that way; a status line there would
+   cost a third of the rail's height for something it has never shown. */
+.row-status {
+  display: none;
+}
+[data-skin="foundry"] .row-status {
+  display: flex;
+}
+
+/* ─── Density ──────────────────────────────────────────────────────────────
+   Compact tightens what scales — the air between entries, inside blocks, and
+   around controls — and leaves the reading size alone. Text that shrinks with
+   the chrome is a smaller app, not a denser one, and the transcript is the one
+   thing here you actually read.
+   ───────────────────────────────────────────────────────────────────────── */
+[data-density="compact"] {
+  --spacing-entry: 14px;
+  --spacing-block: 8px;
+  --spacing-control: 26px;
+  --spacing-control-sm: 22px;
+}
+[data-density="compact"][data-skin="foundry"] {
+  --spacing-entry: 18px;
+  --spacing-block: 9px;
+  --spacing-control: 28px;
+  --spacing-control-sm: 24px;
+}
+
 /* The transcript reserves its scrollbar gutter on both sides, always.
    Otherwise its centred column sits half a scrollbar left of the composer
    below it, and shifts sideways the moment a conversation grows past one
@@ -410,10 +665,17 @@ input:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .spine-running,
-  .streaming-caret {
+  .streaming-caret,
+  [data-skin="foundry"] .settles {
     animation: none;
   }
   .row-actions {
     transition: none;
+  }
+  /* The skin's transitions are all written against these two, so zeroing them
+     here turns off every one of them without hunting for the rules. */
+  [data-skin="foundry"] {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
   }
 }

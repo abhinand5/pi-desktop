@@ -55,7 +55,7 @@ function Dialog({
       className="mb-2 rounded-md border border-amber-dim/50 bg-amber/8 px-3 py-2.5"
     >
       <div className="flex items-baseline gap-2">
-        <span className="font-mono text-2xs tracking-wider text-amber uppercase">waiting on you</span>
+        <span className="eyebrow font-mono text-2xs tracking-wider text-amber uppercase">waiting on you</span>
         {remaining !== null ? (
           <span className="ml-auto font-mono text-2xs text-ink-faint">
             {remaining > 0 ? `${remaining}s left` : "deciding without you…"}

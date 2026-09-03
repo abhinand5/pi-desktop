@@ -164,7 +164,7 @@ function SpeedReadout() {
         <div className="overlay absolute right-0 bottom-full z-50 mb-1.5 w-[290px] overflow-hidden rounded-lg border border-line bg-ink-1">
           {speed ? (
             <div className="border-b border-line px-3 py-2">
-              <div className="font-mono text-2xs tracking-wider text-ink-faint uppercase">
+              <div className="eyebrow font-mono text-2xs tracking-wider text-ink-faint uppercase">
                 {speed.live ? "this turn" : "last turn"}
               </div>
               <Stat label="To first token" value={formatDuration(speed.promptMs)} />
@@ -182,7 +182,7 @@ function SpeedReadout() {
           ) : null}
 
           <div className="px-3 py-2">
-            <div className="font-mono text-2xs tracking-wider text-ink-faint uppercase">
+            <div className="eyebrow font-mono text-2xs tracking-wider text-ink-faint uppercase">
               this session · {session.turns} {session.turns === 1 ? "turn" : "turns"}
             </div>
             {session.turns === 0 ? (

@@ -47,7 +47,7 @@ export default function ProvidersPanel() {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-          <span className="flex-1 font-mono text-[11px] tracking-wider text-ink-dim uppercase">
+          <span className="eyebrow flex-1 font-mono text-[11px] tracking-wider text-ink-dim uppercase">
             endpoints · {harness}
           </span>
           <button
@@ -324,7 +324,7 @@ function ProviderForm({
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block font-mono text-[10px] tracking-wider text-ink-faint uppercase">{label}</span>
+      <span className="eyebrow mb-1 block font-mono text-[10px] tracking-wider text-ink-faint uppercase">{label}</span>
       {children}
     </label>
   );

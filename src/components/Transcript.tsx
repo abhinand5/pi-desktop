@@ -110,7 +110,7 @@ export default function Transcript() {
             {/* The spine. Behind the nodes, stopping at the last one so it
                 reads as a thread rather than a border. */}
             <div className="absolute top-2 bottom-2 left-[4px] w-px bg-line" aria-hidden />
-            <div className="relative space-y-4">
+            <div className="relative flex flex-col gap-(--spacing-entry)">
               {entries.map((entry, i) => (
                 <EntryRow
                   key={entry.seq}
@@ -184,13 +184,54 @@ function useEntryIds(entries: Entry[]): Map<number, string> {
 
 function EntryRow({ entry, entryId, last }: { entry: Entry; entryId: string | null; last: boolean }) {
   return (
-    <div className="group flex gap-3">
+    <div className="entry-row group">
       <SpineNode entry={entry} />
-      <div className="min-w-0 flex-1 pt-0.5">
+      <span aria-hidden />
+      <div className="min-w-0 pt-0.5">
         <EntryBody entry={entry} entryId={entryId} last={last} />
+      </div>
+      {/* The margin. Empty in classic, where the same figures sit under the
+          message instead — see `.lane` in index.css. */}
+      <div className="lane pt-1 pl-3">
+        <EntryMeta entry={entry} stacked />
       </div>
     </div>
   );
+}
+
+/**
+ * What a message cost, in the two places it can go.
+ *
+ * `stacked` is the margin treatment: one figure per line, right-aligned, so a
+ * column of them reads down. Inline is the original — a single row under the
+ * message. The numbers are the same either way; only the shape changes, and
+ * which shape you get is the skin's business rather than this component's.
+ */
+function EntryMeta({ entry, stacked }: { entry: Entry; stacked?: boolean }) {
+  if (entry.kind !== "assistant" || !entry.usage?.totalTokens) return null;
+  const cost = entry.usage.cost?.total;
+
+  if (stacked) {
+    return (
+      <div className="text-right font-mono text-2xs tabular-nums text-ink-faint">
+        <div>{compactTokens(entry.usage.totalTokens)}</div>
+        {cost ? <div className="text-amber-dim">${cost.toFixed(4)}</div> : null}
+      </div>
+    );
+  }
+  return (
+    <span className="font-mono text-2xs text-ink-faint">
+      {entry.provider}/{entry.model} · {entry.usage.totalTokens.toLocaleString()} tok
+      {cost ? ` · $${cost.toFixed(4)}` : ""}
+    </span>
+  );
+}
+
+/** "28,784" is four characters too many for an 84px margin. */
+function compactTokens(n: number): string {
+  if (n < 1000) return `${n} tok`;
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k tok`;
+  return `${(n / 1_000_000).toFixed(1)}M tok`;
 }
 
 function SpineNode({ entry }: { entry: Entry }) {
@@ -234,7 +275,7 @@ function EntryBody({ entry, entryId, last }: { entry: Entry; entryId: string | n
         <div>
           {/* A quiet block, not a bubble: it separates your words from the
               agent's without turning the transcript into a chat app. */}
-          <div className="selectable rounded-md bg-ink-1 px-3 py-2 text-md whitespace-pre-wrap text-ink-text">
+          <div className="prompt-block selectable rounded-md bg-ink-1 px-3 py-2 text-md whitespace-pre-wrap text-ink-text">
             {entry.text}
           </div>
           {entry.imageCount ? (
@@ -303,12 +344,10 @@ function EntryBody({ entry, entryId, last }: { entry: Entry; entryId: string | n
           {!entry.streaming ? (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <AssistantMessageActions text={body} />
-              {entry.usage?.totalTokens ? (
-                <span className="font-mono text-2xs text-ink-faint">
-                  {entry.provider}/{entry.model} · {entry.usage.totalTokens.toLocaleString()} tok
-                  {entry.usage.cost?.total ? ` · $${entry.usage.cost.total.toFixed(4)}` : ""}
-                </span>
-              ) : null}
+              {/* Hidden where the row has a margin to put this in. */}
+              <span className="meta-inline">
+                <EntryMeta entry={entry} />
+              </span>
               {showSpeed && last && speed && !speed.live ? <SpeedNote speed={speed} /> : null}
             </div>
           ) : showSpeed && speed?.live ? (
@@ -323,7 +362,7 @@ function EntryBody({ entry, entryId, last }: { entry: Entry; entryId: string | n
 
     case "bash":
       return (
-        <div className="overflow-hidden rounded-md border border-line bg-ink-1">
+        <div className="overflow-hidden rounded-md border border-edge bg-ink-1">
           <div className="flex items-center gap-2 px-3 py-1.5">
             <span className="font-mono text-sm text-teal">$</span>
             <span className="selectable min-w-0 flex-1 truncate font-mono text-sm text-ink-text">

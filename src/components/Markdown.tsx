@@ -118,7 +118,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   };
 
   return (
-    <div className="group relative overflow-hidden rounded-md border border-line bg-ink-0">
+    <div className="code-block group relative overflow-hidden rounded-md border border-edge bg-ink-0">
       <div className="flex items-center gap-2 border-b border-line/70 px-3 py-1">
         <span className="font-mono text-2xs tracking-wider text-ink-faint uppercase">{lang || "text"}</span>
         <button

@@ -76,4 +76,37 @@ describe("appearance", () => {
     slice.setSetting("glass", false);
     expect(document.documentElement.hasAttribute("data-glass")).toBe(false);
   });
+
+  it("carries the skin with the look, and leaves classic unmarked", () => {
+    // The whole promise of the second skin is that the first one does not
+    // change. Every Foundry rule is scoped to `[data-skin="foundry"]`, so a
+    // classic look must never carry the attribute — if it did, the new
+    // structure would apply to the old palette.
+    const { slice } = makeSlice();
+    expect(document.documentElement.hasAttribute("data-skin")).toBe(false);
+
+    slice.setSetting("theme", "foundry-night");
+    expect(document.documentElement.getAttribute("data-skin")).toBe("foundry");
+    expect(document.documentElement.getAttribute("data-appearance")).toBe("dark");
+
+    slice.setSetting("theme", "foundry-day");
+    expect(document.documentElement.getAttribute("data-skin")).toBe("foundry");
+    expect(document.documentElement.getAttribute("data-appearance")).toBe("light");
+
+    for (const classic of ["phosphor", "ember", "nocturne", "moss", "mono", "paper"] as const) {
+      slice.setSetting("theme", classic);
+      expect(document.documentElement.hasAttribute("data-skin")).toBe(false);
+    }
+  });
+
+  it("marks compact density only, since comfortable is the authored spacing", () => {
+    const { slice } = makeSlice();
+    expect(document.documentElement.hasAttribute("data-density")).toBe(false);
+
+    slice.setSetting("density", "compact");
+    expect(document.documentElement.getAttribute("data-density")).toBe("compact");
+
+    slice.setSetting("density", "comfortable");
+    expect(document.documentElement.hasAttribute("data-density")).toBe(false);
+  });
 });

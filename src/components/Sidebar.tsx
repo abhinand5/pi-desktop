@@ -19,6 +19,7 @@ import {
 import { open } from "@tauri-apps/plugin-dialog";
 import type { SessionSummary } from "../lib/agent-state";
 import { bridge } from "../lib/bridge";
+import { formatCost } from "../lib/format";
 import { useAppStore } from "../lib/agent-store";
 import NewInProject, { type MenuAnchor } from "./NewInProject";
 import { projectKey, projectLabel, sessionLabel, shortAge, workspaceTitle, type Workspace } from "../lib/store/workspace";
@@ -130,7 +131,7 @@ function SidebarBody() {
   };
 
   return (
-    <aside className="chrome flex w-[264px] shrink-0 flex-col border-r border-line bg-ink-1">
+    <aside className="chrome flex w-[264px] shrink-0 flex-col border-r border-line bg-ink-1 max-[1080px]:w-[212px]">
       <div className="flex gap-1 px-3 pt-3 pb-1">
         {(["pi", "omp"] as const).map((h) => (
           <button
@@ -156,7 +157,7 @@ function SidebarBody() {
       ) : null}
 
       <div className="mt-2 flex items-center justify-between px-4 pb-1">
-        <span className="font-mono text-2xs tracking-wider text-ink-faint uppercase">workspaces</span>
+        <span className="eyebrow font-mono text-2xs tracking-wider text-ink-faint uppercase">workspaces</span>
         <div className="flex items-center gap-1">
           {/* The first host has to be reachable before there is a switcher to
               reach it from — the switcher hides itself until one exists. */}
@@ -329,7 +330,7 @@ function SidebarBody() {
         )}
         {archivedProjects.length ? (
           <div className="mt-4 border-t border-line/60 pt-2">
-            <div className="px-1 pb-1 font-mono text-2xs tracking-wider text-ink-faint uppercase">archived</div>
+            <div className="eyebrow px-1 pb-1 font-mono text-2xs tracking-wider text-ink-faint uppercase">archived</div>
             {archivedProjects.map(([key, saved]) => {
               const cwd = saved.cwd;
               const project = projectLabel(cwd, saved.kind);
@@ -463,31 +464,49 @@ function WorkspaceRow({
   const working = live && workspace.agent.streaming;
   const label = terminal ? TERMINAL_TITLE[workspace.program] : workspaceTitle(workspace);
 
+  // What this session has cost so far, and how full its window is. The rail is
+  // where you watch work you are not looking at, so the two numbers you would
+  // otherwise have to open the session to see belong on the row.
+  const cost = workspace.stats?.cost;
+  const context = workspace.context?.percent;
+  const status = working ? "working" : workspace.connecting ? "starting" : null;
+
   return (
     <div
-      className={`group flex items-center gap-1.5 rounded-sm px-2 py-1.5 ${
-        active ? "bg-ink-3" : "hover:bg-ink-2"
-      }`}
+      data-row
+      className={`group rounded-sm px-2 py-1.5 ${active ? "bg-ink-3" : "hover:bg-ink-2"}`}
     >
-      {terminal ? (
-        <SquareTerminal size={11} className="shrink-0 text-ink-faint" aria-label="terminal" />
-      ) : (
-        <StateDot working={working} live={live} unread={workspace.unread} connecting={workspace.connecting} />
-      )}
-      <button onClick={onSelect} className="min-w-0 flex-1 truncate text-left text-sm text-ink-text">
-        {label}
-      </button>
-      {workspace.target ? (
-        <span className="shrink-0 font-mono text-2xs text-teal">{workspace.target}</span>
+      <div className="flex items-center gap-1.5">
+        {terminal ? (
+          <SquareTerminal size={11} className="shrink-0 text-ink-faint" aria-label="terminal" />
+        ) : (
+          <StateDot working={working} live={live} unread={workspace.unread} connecting={workspace.connecting} />
+        )}
+        <button onClick={onSelect} className="min-w-0 flex-1 truncate text-left text-sm text-ink-text">
+          {label}
+        </button>
+        {workspace.target ? (
+          <span className="shrink-0 font-mono text-2xs text-teal">{workspace.target}</span>
+        ) : null}
+        <button
+          onClick={onClose}
+          aria-label={`Close ${label}`}
+          title={`Close ${label}`}
+          className="row-actions shrink-0 text-ink-faint hover:text-red"
+        >
+          <X size={11} />
+        </button>
+      </div>
+
+      {/* A second line, only where the skin has the room for it and only when
+          there is something on it worth the height. */}
+      {!terminal && (status || cost || context !== undefined) ? (
+        <div className="row-status mt-0.5 ml-[18px] flex items-center gap-2 font-mono text-2xs tabular-nums text-ink-faint">
+          {status ? <span className="text-amber">{status}</span> : null}
+          {cost ? <span>{formatCost(cost)}</span> : null}
+          {context !== undefined ? <span>{Math.round(context)}% ctx</span> : null}
+        </div>
       ) : null}
-      <button
-        onClick={onClose}
-        aria-label={`Close ${label}`}
-        title={`Close ${label}`}
-        className="row-actions shrink-0 text-ink-faint hover:text-red"
-      >
-        <X size={11} />
-      </button>
     </div>
   );
 }
