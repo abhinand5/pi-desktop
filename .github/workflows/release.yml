@@ -134,6 +134,7 @@ jobs:
           '
 
       - name: Build and upload ${{ matrix.name }}
+        if: matrix.name != 'linux_appimage'
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -143,6 +144,66 @@ jobs:
           tagName: ${{ github.ref_name }}
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
+
+      # The AppImage is packed by hand, because it has to be opened up again
+      # before it ships. linuxdeploy bundles the *build* machine's wayland
+      # client library, and a wayland client belongs to the host's graphics
+      # stack the same way libGL does: the host's mesa resolves against
+      # whichever copy comes first on the library path, and the bundled one is
+      # from Ubuntu 22.04 while the machine running it is not. On a recent
+      # distro that copy is missing symbols the host's stack needs — eleven of
+      # them against wayland 1.26 — and the app dies on a symbol it should
+      # never have been looking for in there. Users were working around it with
+      # `LD_PRELOAD=/usr/lib/libwayland-client.so`, which is the same fix from
+      # the outside.
+      - name: Build the AppImage
+        if: matrix.name == 'linux_appimage'
+        run: pnpm tauri build ${{ matrix.args }}
+
+      - name: Leave the host its own graphics libraries
+        if: matrix.name == 'linux_appimage'
+        shell: bash
+        env:
+          # The runners have no FUSE, so appimagetool unpacks itself instead.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          set -euo pipefail
+          root="$PWD"
+          built="$(find "$root/src-tauri/target/release/bundle/appimage" -maxdepth 1 -name '*.AppImage' | head -1)"
+          if [ -z "$built" ]; then
+            echo "no AppImage was produced" >&2
+            exit 1
+          fi
+
+          curl -fsSL -o "$root/appimagetool" \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x "$root/appimagetool"
+
+          work="$(mktemp -d)"
+          cd "$work"
+          "$built" --appimage-extract >/dev/null
+
+          # Nothing here should ever be shipped: every one of these is a client
+          # of the host's compositor and driver.
+          removed="$(find squashfs-root -name 'libwayland-*' -print -delete | wc -l)"
+          echo "removed $removed bundled wayland libraries"
+          if [ "$removed" -eq 0 ]; then
+            echo "note: the bundler no longer ships them, so this step is now a no-op"
+          fi
+
+          ARCH=x86_64 "$root/appimagetool" --no-appstream squashfs-root \
+            "$root/pi-desktop-linux_appimage-amd64-appimage.AppImage"
+
+      - name: Upload the AppImage
+        if: matrix.name == 'linux_appimage'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "${{ github.ref_name }}" \
+            "pi-desktop-linux_appimage-amd64-appimage.AppImage" \
+            --repo "$GITHUB_REPOSITORY" --clobber
           uploadPlainBinary: ${{ matrix.upload_plain_binary }}
           uploadUpdaterJson: false
           uploadUpdaterSignatures: false
