@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import {
   Archive,
   BarChart3,
@@ -15,7 +14,6 @@ import {
   Server,
   Sparkles,
   SquareTerminal,
-  Trash2,
   X,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -23,7 +21,8 @@ import type { SessionSummary } from "../lib/agent-state";
 import { bridge } from "../lib/bridge";
 import { useAppStore } from "../lib/agent-store";
 import NewInProject, { type MenuAnchor } from "./NewInProject";
-import { projectLabel, sessionLabel, shortAge, workspaceTitle, type Workspace } from "../lib/store/workspace";
+import { projectKey, projectLabel, sessionLabel, shortAge, workspaceTitle, type Workspace } from "../lib/store/workspace";
+import MachineSwitcher from "./MachineSwitcher";
 import WorkspaceActionsMenu from "./WorkspaceActionsMenu";
 
 /**
@@ -53,12 +52,9 @@ function SidebarBody() {
   const setPanel = useAppStore((s) => s.setPanel);
   const setRoute = useAppStore((s) => s.setRoute);
   const route = useAppStore((s) => s.route);
-  const target = useAppStore((s) => s.target);
-  const hosts = useAppStore((s) => s.hosts);
+  const activeMachine = useAppStore((s) => s.activeMachine);
   const showAddHost = useAppStore((s) => s.showAddHost);
-  const setTarget = useAppStore((s) => s.setTarget);
   const setShowAddHost = useAppStore((s) => s.setShowAddHost);
-  const removeHost = useAppStore((s) => s.removeHost);
   const setHarness = useAppStore((s) => s.setHarness);
   const resumeSession = useAppStore((s) => s.resumeSession);
   const restoreProject = useAppStore((s) => s.restoreProject);
@@ -76,11 +72,14 @@ function SidebarBody() {
     }
     const out = new Map<string, SessionSummary[]>();
     for (const session of sessions) {
-      const project = projects[session.cwd];
+      // `sessions_list` scans this machine's disk, so every session it returns
+      // belongs to a local project.
+      const key = projectKey(null, session.cwd);
+      const project = projects[key];
       if (!project || project.archived || open.has(session.path)) continue;
-      const list = out.get(session.cwd);
+      const list = out.get(key);
       if (list) list.push(session);
-      else out.set(session.cwd, [session]);
+      else out.set(key, [session]);
     }
     for (const list of out.values()) {
       list.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
@@ -88,33 +87,39 @@ function SidebarBody() {
     return out;
   }, [sessions, projects, workspaces, order]);
 
+  // Only the machine you are on. The others keep their workspaces, their
+  // runtimes, and their place in the order — they are simply not this desktop.
   const groups = useMemo(() => {
     const out = new Map<string, Workspace[]>();
     for (const id of order) {
       const w = workspaces[id];
-      if (!w || !projects[w.cwd] || projects[w.cwd].archived) continue;
-      const list = out.get(w.cwd);
+      if (!w || w.target !== activeMachine) continue;
+      const key = projectKey(w.target, w.cwd);
+      if (!projects[key] || projects[key].archived) continue;
+      const list = out.get(key);
       if (list) list.push(w);
-      else out.set(w.cwd, [w]);
+      else out.set(key, [w]);
     }
-    for (const cwd of Object.keys(projects)) {
-      if (projects[cwd].archived || out.has(cwd)) continue;
-      out.set(cwd, []);
+    for (const [key, p] of Object.entries(projects)) {
+      if (p.archived || p.target !== activeMachine || out.has(key)) continue;
+      out.set(key, []);
     }
     return [...out.entries()];
-  }, [projects, workspaces, order]);
+  }, [projects, workspaces, order, activeMachine]);
 
   const archivedProjects = useMemo(
     () =>
-      Object.values(projects)
-        .filter((project) => project.archived)
-        .sort((a, b) => a.cwd.localeCompare(b.cwd)),
-    [projects],
+      Object.entries(projects)
+        .filter(([, project]) => project.archived && project.target === activeMachine)
+        .sort(([, a], [, b]) => a.cwd.localeCompare(b.cwd)),
+    [projects, activeMachine],
   );
 
   const chooseFolder = async () => {
+    // The picker browses this machine's disk, so it is only offered here; a
+    // remote folder is reached through the file browser instead.
     const dir = await open({ directory: true, multiple: false });
-    if (typeof dir === "string") openWorkspace({ cwd: dir });
+    if (typeof dir === "string") openWorkspace({ cwd: dir, target: null });
   };
 
   const startScratch = async () => {
@@ -143,44 +148,26 @@ function SidebarBody() {
         ))}
       </div>
 
-      <Section title="machine">
-        <div className="flex flex-wrap gap-1">
-          <MachineButton label="this machine" active={target === null} onClick={() => setTarget(null)} />
-          {hosts.map((h) => (
-            <span key={h.alias} className="group relative inline-flex">
-              <MachineButton label={h.alias} active={target === h.alias} onClick={() => setTarget(h.alias)} />
-              <button
-                onClick={() => void removeHost(h.alias)}
-                className="absolute -top-1 -right-1 hidden h-4 w-4 items-center justify-center rounded-full bg-red text-on-accent group-hover:flex"
-                aria-label={`Remove ${h.alias}`}
-              >
-                <Trash2 size={8} />
-              </button>
-            </span>
-          ))}
-          <button
-            onClick={() => setShowAddHost(!showAddHost)}
-            className="h-control min-w-7 flex-1 rounded-sm border border-dashed border-line font-mono text-xs text-ink-faint hover:border-line-strong hover:text-ink-text"
-            aria-label="Add an SSH host"
-          >
-            +
-          </button>
+      <MachineSwitcher />
+      {showAddHost ? (
+        <div className="px-3 pt-2">
+          <AddHostForm onDone={() => setShowAddHost(false)} />
         </div>
-        {showAddHost ? <AddHostForm onDone={() => setShowAddHost(false)} /> : null}
-        {target ? (
-          <button
-            onClick={() => setPanel("files")}
-            className="mt-1.5 flex w-full items-center gap-2 rounded-sm border border-line bg-ink-2 px-2.5 py-1.5 text-left hover:border-line-strong"
-          >
-            <Server size={12} className="shrink-0 text-amber-dim" />
-            <span className="flex-1 text-sm text-ink-text">Browse files on {target}</span>
-          </button>
-        ) : null}
-      </Section>
+      ) : null}
 
       <div className="mt-2 flex items-center justify-between px-4 pb-1">
         <span className="font-mono text-2xs tracking-wider text-ink-faint uppercase">workspaces</span>
         <div className="flex items-center gap-1">
+          {/* The first host has to be reachable before there is a switcher to
+              reach it from — the switcher hides itself until one exists. */}
+          <button
+            onClick={() => setShowAddHost(!showAddHost)}
+            className="rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-teal"
+            aria-label="Connect to a machine"
+            title="Connect to a machine over SSH"
+          >
+            <Server size={13} />
+          </button>
           <button
             onClick={() => void startScratch()}
             className="rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-amber"
@@ -189,14 +176,25 @@ function SidebarBody() {
           >
             <Sparkles size={13} />
           </button>
-          <button
-            onClick={() => void chooseFolder()}
-            className="rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-ink-text"
-            aria-label="Open another folder"
-            title="Open another folder"
-          >
-            <Plus size={13} />
-          </button>
+          {activeMachine ? (
+            <button
+              onClick={() => setPanel("files")}
+              className="rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-ink-text"
+              aria-label={`Open a folder on ${activeMachine}`}
+              title={`Open a folder on ${activeMachine}`}
+            >
+              <Plus size={13} />
+            </button>
+          ) : (
+            <button
+              onClick={() => void chooseFolder()}
+              className="rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-ink-text"
+              aria-label="Open another folder"
+              title="Open another folder"
+            >
+              <Plus size={13} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -210,27 +208,38 @@ function SidebarBody() {
               <Sparkles size={13} className="shrink-0" />
               Start a scratch session
             </button>
-            <button
-              onClick={() => void chooseFolder()}
-              className="flex w-full items-center gap-2 rounded-sm border border-dashed border-line px-2.5 py-2 text-left text-sm text-ink-dim hover:border-line-strong hover:text-ink-text"
-            >
-              <FolderOpen size={13} className="shrink-0 text-amber-dim" />
-              Open a folder to begin
-            </button>
+            {activeMachine ? (
+              <button
+                onClick={() => setPanel("files")}
+                className="flex w-full items-center gap-2 rounded-sm border border-dashed border-line px-2.5 py-2 text-left text-sm text-ink-dim hover:border-line-strong hover:text-ink-text"
+              >
+                <Server size={13} className="shrink-0 text-teal" />
+                Open a folder on {activeMachine}
+              </button>
+            ) : (
+              <button
+                onClick={() => void chooseFolder()}
+                className="flex w-full items-center gap-2 rounded-sm border border-dashed border-line px-2.5 py-2 text-left text-sm text-ink-dim hover:border-line-strong hover:text-ink-text"
+              >
+                <FolderOpen size={13} className="shrink-0 text-amber-dim" />
+                Open a folder to begin
+              </button>
+            )}
           </div>
         ) : (
-          groups.map(([cwd, list]) => {
-            const project = projectLabel(cwd, projects[cwd]?.kind);
-            const collapsed = collapsedWorkspaces[cwd] ?? false;
+          groups.map(([key, list]) => {
+            const cwd = projects[key]?.cwd ?? "";
+            const project = projectLabel(cwd, projects[key]?.kind);
+            const collapsed = collapsedWorkspaces[key] ?? false;
             return (
-              <div key={cwd} className="mb-2">
+              <div key={key} className="mb-2">
                 <div className="flex items-center gap-1 px-1 pb-1">
                   <button
                     type="button"
                     onClick={() =>
                       setCollapsedWorkspaces((previous) => ({
                         ...previous,
-                        [cwd]: !collapsed,
+                        [key]: !collapsed,
                       }))
                     }
                     aria-expanded={!collapsed}
@@ -252,7 +261,9 @@ function SidebarBody() {
                         type="button"
                         onClick={() => {
                           setWorkspaceMenu(null);
-                          setNewMenu(newMenu?.cwd === cwd ? null : { cwd, target: list[0]?.target ?? null });
+                          setNewMenu(
+                            newMenu?.cwd === cwd ? null : { cwd, target: projects[key]?.target ?? null },
+                          );
                         }}
                         aria-haspopup="menu"
                         aria-expanded={newMenu?.cwd === cwd}
@@ -271,18 +282,18 @@ function SidebarBody() {
                         type="button"
                         onClick={() => {
                           setNewMenu(null);
-                          setWorkspaceMenu(workspaceMenu === cwd ? null : cwd);
+                          setWorkspaceMenu(workspaceMenu === key ? null : key);
                         }}
                         aria-haspopup="menu"
-                        aria-expanded={workspaceMenu === cwd}
+                        aria-expanded={workspaceMenu === key}
                         className="rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-ink-text"
                         aria-label={`Workspace actions for ${project}`}
                         title={`Workspace actions for ${project}`}
                       >
                         <MoreHorizontal size={13} />
                       </button>
-                      {workspaceMenu === cwd ? (
-                        <WorkspaceActionsMenu cwd={cwd} onClose={() => setWorkspaceMenu(null)} />
+                      {workspaceMenu === key ? (
+                        <WorkspaceActionsMenu projectKey={key} onClose={() => setWorkspaceMenu(null)} />
                       ) : null}
                     </div>
                   </div>
@@ -306,7 +317,7 @@ function SidebarBody() {
                       />
                     ))}
                     <ProjectSessions
-                      sessions={sessionsByProject.get(cwd) ?? []}
+                      sessions={sessionsByProject.get(key) ?? []}
                       onOpen={(s) => void resumeSession(s)}
                       onSeeAll={() => setPanel("history")}
                     />
@@ -319,13 +330,14 @@ function SidebarBody() {
         {archivedProjects.length ? (
           <div className="mt-4 border-t border-line/60 pt-2">
             <div className="px-1 pb-1 font-mono text-2xs tracking-wider text-ink-faint uppercase">archived</div>
-            {archivedProjects.map(({ cwd }) => {
-              const project = projectLabel(cwd, projects[cwd]?.kind);
+            {archivedProjects.map(([key, saved]) => {
+              const cwd = saved.cwd;
+              const project = projectLabel(cwd, saved.kind);
               return (
-                <div key={cwd} className="group flex items-center gap-1 rounded-sm px-1 py-1">
+                <div key={key} className="group flex items-center gap-1 rounded-sm px-1 py-1">
                   <button
                     type="button"
-                    onClick={() => restoreProject(cwd)}
+                    onClick={() => restoreProject(key)}
                     aria-label={`Restore workspace ${project}`}
                     title={cwd}
                     className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1.5 py-1 text-left text-sm text-ink-dim hover:bg-ink-2 hover:text-ink-text"
@@ -338,18 +350,18 @@ function SidebarBody() {
                       type="button"
                       onClick={() => {
                         setNewMenu(null);
-                        setWorkspaceMenu(workspaceMenu === cwd ? null : cwd);
+                        setWorkspaceMenu(workspaceMenu === key ? null : key);
                       }}
                       aria-haspopup="menu"
-                      aria-expanded={workspaceMenu === cwd}
+                      aria-expanded={workspaceMenu === key}
                       aria-label={`Workspace actions for ${project}`}
                       title={`Workspace actions for ${project}`}
                       className="row-actions rounded-sm p-1 text-ink-faint hover:bg-ink-2 hover:text-ink-text"
                     >
                       <MoreHorizontal size={13} />
                     </button>
-                    {workspaceMenu === cwd ? (
-                      <WorkspaceActionsMenu cwd={cwd} onClose={() => setWorkspaceMenu(null)} />
+                    {workspaceMenu === key ? (
+                      <WorkspaceActionsMenu projectKey={key} onClose={() => setWorkspaceMenu(null)} />
                     ) : null}
                   </div>
                 </div>
@@ -517,19 +529,6 @@ function StateDot({
   );
 }
 
-function MachineButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={`h-control min-w-14 flex-1 rounded-sm border px-2 font-mono text-xs ${
-        active ? "border-teal/60 bg-teal/10 text-teal" : "border-line text-ink-faint hover:text-ink-dim"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
 
 function AddHostForm({ onDone }: { onDone: () => void }) {
   const addHost = useAppStore((s) => s.addHost);
@@ -608,11 +607,3 @@ function AddHostForm({ onDone }: { onDone: () => void }) {
 }
 
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="px-3 pt-2 pb-1">
-      <div className="px-1 pb-1.5 font-mono text-2xs tracking-wider text-ink-faint uppercase">{title}</div>
-      {children}
-    </div>
-  );
-}

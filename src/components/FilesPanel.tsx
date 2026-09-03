@@ -1,16 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronRight, File as FileIcon, Folder, RefreshCw, X } from "lucide-react";
+import { ChevronRight, File as FileIcon, Folder, FolderOpen, RefreshCw, X } from "lucide-react";
 import { bridge } from "../lib/bridge";
 import type { FsEntry } from "../lib/bridge";
 import { useAppStore } from "../lib/agent-store";
 
 /**
- * Remote file browser over the multiplexed ssh connection: `ls -Apl` for
- * listings, `cat` (512 KB cap) for text preview. Dirs navigate, files open.
+ * Remote file browser over the multiplexed ssh connection: `ls` for listings,
+ * `cat` (512 KB cap) for text preview. Directories navigate, files preview,
+ * and any directory can be opened as a workspace — which is the only way onto a
+ * remote, since the OS folder picker can only see this machine's disk.
  */
 export default function FilesPanel() {
   const open = useAppStore((s) => s.openPanel === "files");
-  const target = useAppStore((s) => s.target);
+  // The machine you are on, not the machine the workspace in front of you runs
+  // on. Those differ exactly when you have just moved to a remote and have no
+  // workspace there yet — which is when you need this panel most, and when it
+  // used to sit blank because it had nothing to browse.
+  const activeMachine = useAppStore((s) => s.activeMachine);
+  const openWorkspace = useAppStore((s) => s.openWorkspace);
+  const setRoute = useAppStore((s) => s.setRoute);
   const setPanel = useAppStore((s) => s.setPanel);
   const setOpen = (next: boolean) => setPanel(next ? "files" : null);
 
@@ -20,7 +28,7 @@ export default function FilesPanel() {
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ path: string; text: string } | null>(null);
 
-  const host = target;
+  const host = activeMachine;
 
   const load = useCallback(
     async (path: string) => {
@@ -58,6 +66,14 @@ export default function FilesPanel() {
           <span className="flex-1 truncate font-mono text-[11px] text-ink-dim">
             {host}: {cwd}
           </span>
+          <button
+            onClick={() => openHere(cwd)}
+            className="flex items-center gap-1 rounded-sm border border-line px-2 py-0.5 font-mono text-[10.5px] text-ink-dim hover:border-line-strong hover:text-ink-text"
+            aria-label={`Open ${cwd} as a workspace`}
+            title={`Open ${cwd} as a workspace`}
+          >
+            <FolderOpen size={11} className="text-amber-dim" /> open
+          </button>
           <button onClick={() => void load(cwd)} className="text-ink-faint hover:text-ink-text" aria-label="Refresh">
             <RefreshCw size={13} />
           </button>
@@ -89,19 +105,32 @@ export default function FilesPanel() {
           ) : null}
           {loading ? <div className="px-2 py-3 font-mono text-[11px] text-ink-faint">loading…</div> : null}
           {entries.map((e) => (
-            <button
-              key={e.path}
-              onClick={() => (e.isDir ? void load(e.path) : void openFile(e.path))}
-              className="flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-left hover:bg-ink-2"
-            >
+            <div key={e.path} className="group flex items-center rounded-[7px] hover:bg-ink-2">
+              <button
+                onClick={() => (e.isDir ? void load(e.path) : void openFile(e.path))}
+                className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+              >
+                {e.isDir ? (
+                  <Folder size={13} className="shrink-0 text-amber-dim" />
+                ) : (
+                  <FileIcon size={13} className="shrink-0 text-ink-faint" />
+                )}
+                <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink-text">{e.name}</span>
+              </button>
               {e.isDir ? (
-                <Folder size={13} className="shrink-0 text-amber-dim" />
-              ) : (
-                <FileIcon size={13} className="shrink-0 text-ink-faint" />
-              )}
-              <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink-text">{e.name}</span>
-              {e.isDir ? <ChevronRight size={11} className="text-ink-faint" /> : null}
-            </button>
+                <>
+                  <button
+                    onClick={() => openHere(e.path)}
+                    aria-label={`Open ${e.name} as a workspace`}
+                    title={`Open ${e.name} as a workspace`}
+                    className="mr-1 hidden shrink-0 rounded-sm p-1 text-ink-faint hover:text-amber group-hover:block"
+                  >
+                    <FolderOpen size={12} />
+                  </button>
+                  <ChevronRight size={11} className="mr-2 shrink-0 text-ink-faint" />
+                </>
+              ) : null}
+            </div>
           ))}
         </div>
 
@@ -121,6 +150,14 @@ export default function FilesPanel() {
       </div>
     </div>
   );
+
+  /** Starts a workspace in a remote directory and gets out of the way. */
+  function openHere(path: string) {
+    if (!host) return;
+    openWorkspace({ cwd: path, target: host });
+    setRoute("chat");
+    setOpen(false);
+  }
 
   async function openFile(path: string) {
     setError(null);

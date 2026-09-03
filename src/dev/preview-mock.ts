@@ -725,6 +725,29 @@ function usageReport(harness: HarnessName | "all", sinceDays: number | null): Us
     longestStreak,
     peakHour: 10,
     favoriteModel,
+    byMachine: [
+      {
+        machine: "this machine",
+        sessions: sessionsCount,
+        messages,
+        tokens: { input, output, cacheRead, cacheWrite, total: totalTokens },
+        cost: Number((totalTokens / 1_000_000 * 3.6).toFixed(2)),
+      },
+      {
+        machine: "build-box",
+        sessions: 3,
+        messages: 84,
+        tokens: {
+          input: Math.round(input * 0.08),
+          output: Math.round(output * 0.08),
+          cacheRead: Math.round(cacheRead * 0.08),
+          cacheWrite: Math.round(cacheWrite * 0.08),
+          total: Math.round(totalTokens * 0.08),
+        },
+        cost: Number((totalTokens * 0.08 / 1_000_000 * 3.6).toFixed(2)),
+      },
+    ],
+    unreachable: [],
     byModel: [
       {
         model: favoriteModel,
@@ -827,6 +850,8 @@ function mergeUsage(a: UsageReport, b: UsageReport): UsageReport {
     longestStreak,
     peakHour: Math.max(a.peakHour ?? 0, b.peakHour ?? 0) || null,
     favoriteModel: byModel[0]?.model ?? null,
+    byMachine: a.byMachine,
+    unreachable: [...new Set([...a.unreachable, ...b.unreachable])],
     byModel,
     byDay,
     firstDay: byDay[0]?.date ?? null,

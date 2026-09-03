@@ -216,9 +216,9 @@ export const bridge = {
     return invoke("sessions_list", { harness });
   },
 
-  /** Resolves and creates a fresh local app-owned scratch session directory. */
-  async scratchWorkspace(path?: string | null): Promise<string> {
-    return invoke("scratch_workspace", { path: path?.trim() || null });
+  /** Creates a fresh scratch session directory on the machine it will run on. */
+  async scratchWorkspace(path?: string | null, host?: string | null): Promise<string> {
+    return invoke("scratch_workspace", { path: path?.trim() || null, host: host ?? null });
   },
 
   /** Reads a still image from the OS clipboard without involving webview permissions. */
@@ -226,8 +226,10 @@ export const bridge = {
     return invoke("clipboard_image");
   },
 
-  async models(harness: HarnessId): Promise<ModelInfo[]> {
-    return invoke("models_list", { harness });
+  /** The catalog of the machine the agent runs on: a remote box has its own
+   *  providers and its own configured models. */
+  async models(harness: HarnessId, host?: string | null): Promise<ModelInfo[]> {
+    return invoke("models_list", { harness, host: host ?? null });
   },
 
 
@@ -267,8 +269,14 @@ export const bridge = {
   },
 
   /** Aggregate usage across the sessions the given agent (or both) wrote. */
-  async usageReport(harness: HarnessId | "all", sinceDays: number | null): Promise<UsageReport> {
-    return invoke("usage_report", { harness, sinceDays });
+  /** Usage across every machine: this one and every registered host. Pass
+   *  `hosts` to narrow it; omit for all of them. */
+  async usageReport(
+    harness: HarnessId | "all",
+    sinceDays: number | null,
+    hosts?: string[] | null,
+  ): Promise<UsageReport> {
+    return invoke("usage_report", { harness, sinceDays, hosts: hosts ?? null });
   },
 
   // ---- provider onboarding (native config formats) ----

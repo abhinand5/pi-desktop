@@ -9,15 +9,22 @@ import type { CatalogSlice, SliceOf } from "./types";
 export const createCatalogSlice: SliceOf<CatalogSlice> = (set, get) => ({
   models: [],
   modelsError: null,
+  modelsFor: null,
   harnessDefault: null,
   sessions: [],
   providers: [],
   hosts: [],
 
   async loadModels() {
-    set({ modelsError: null });
+    // A catalog belongs to a machine and an agent: a remote box has its own
+    // providers, its own keys, and its own configured models.
+    const machine = get().activeMachine;
+    const harness = get().harness;
+    set({ modelsError: null, modelsFor: `${harness}@${machine ?? ""}` });
     try {
-      const models = await bridge.models(get().harness);
+      const models = await bridge.models(harness, machine);
+      // Another machine was selected while this was in flight; its answer wins.
+      if (get().modelsFor !== `${harness}@${machine ?? ""}`) return;
       set({ models });
       // Re-point the selection at the freshly loaded catalog entry, so a
       // reloaded model list does not leave a stale object selected. A model the

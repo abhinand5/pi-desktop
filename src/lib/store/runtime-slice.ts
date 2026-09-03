@@ -17,7 +17,15 @@ import { loadWorkspaces, saveWorkspaces } from "./persist";
 import { loadSpeedHistory } from "./speed-history";
 import type { AppStore, BashResult, RuntimeSlice, SessionStats, SliceOf } from "./types";
 import { closeTerminal } from "../terminals";
-import { BLANK, createWorkspace, isScratchWorkspacePath, project, type ProjectKind, type Workspace } from "./workspace";
+import {
+  BLANK,
+  createWorkspace,
+  isScratchWorkspacePath,
+  project,
+  projectKey,
+  type ProjectKind,
+  type Workspace,
+} from "./workspace";
 
 /** Unwraps `{ data }` from a correlated RPC response. */
 function data<T>(response: unknown): T | undefined {
@@ -138,7 +146,10 @@ export const createRuntimeSlice = (
       // The catalog is fetched by spawning a *second* harness process, so it is
       // loaded once per agent rather than on every session start — it competes
       // for the machine with the agent that is booting.
-      if (!get().models.length) void get().loadModels();
+      // Once per agent *and* machine: the probe spawns a second harness
+      // process, so it must not run on every session start — but a catalog
+      // fetched from this laptop says nothing about what a build box can run.
+      if (get().modelsFor !== `${w.harness}@${w.target ?? ""}`) void get().loadModels();
       void get().loadCommands();
       void get().refreshContext();
       // Adopts the harness's own model and thinking level, so a new session
@@ -188,6 +199,10 @@ export const createRuntimeSlice = (
 
   return {
     projects: restored?.projects ?? {},
+    // The machine whose work the rail is showing. Null is this machine, which
+    // is where a single-machine user permanently lives without ever being told
+    // that machines are a concept.
+    activeMachine: first?.target ?? null,
     workspaces: restored?.workspaces ?? {},
     workspaceOrder: restored?.workspaceOrder ?? [],
     activeWorkspaceId: restored?.activeWorkspaceId ?? null,
@@ -195,8 +210,11 @@ export const createRuntimeSlice = (
 
     openWorkspace(init) {
       const s = get();
+      const target = init.target ?? null;
+      const key = projectKey(target, init.cwd);
       const projectKind: ProjectKind =
-        init.projectKind ?? s.projects[init.cwd]?.kind ?? (isScratchWorkspacePath(init.cwd) ? "scratch" : "folder");
+        init.projectKind ?? s.projects[key]?.kind ?? (isScratchWorkspacePath(init.cwd) ? "scratch" : "folder");
+      const entry = { cwd: init.cwd, target, archived: false, kind: projectKind };
       // One workspace per folder+machine+agent; asking again just goes there.
       // A fresh session opts out. Resuming reuses the workspace already on that
       // exact session, while a different session path still gets its own tab.
@@ -205,7 +223,7 @@ export const createRuntimeSlice = (
         .find(
           (w) =>
             w.cwd === init.cwd &&
-            w.target === (init.target ?? null) &&
+            w.target === target &&
             w.harness === (init.harness ?? s.harness) &&
             w.kind === (init.kind ?? "chat") &&
             (init.sessionPath
@@ -213,14 +231,9 @@ export const createRuntimeSlice = (
               : !init.fresh),
         );
       if (existing) {
-        const savedProject = s.projects[init.cwd];
+        const savedProject = s.projects[key];
         if (!savedProject || savedProject.archived || savedProject.kind !== projectKind) {
-          set({
-            projects: {
-              ...s.projects,
-              [init.cwd]: { cwd: init.cwd, archived: false, kind: projectKind },
-            },
-          });
+          set({ projects: { ...s.projects, [key]: entry } });
           remember();
         }
         get().activateWorkspace(existing.id);
@@ -229,7 +242,7 @@ export const createRuntimeSlice = (
       const w = createWorkspace({
         harness: init.harness ?? s.harness,
         cwd: init.cwd,
-        target: init.target ?? null,
+        target,
         sessionPath: init.sessionPath ?? null,
         thinking: s.settings ? s.thinking : "medium",
         // A fresh session starts on the harness's own default model — the one
@@ -240,10 +253,9 @@ export const createRuntimeSlice = (
         program: init.program,
       });
       set({
-        projects: {
-          ...s.projects,
-          [init.cwd]: { cwd: init.cwd, archived: false, kind: projectKind },
-        },
+        projects: { ...s.projects, [key]: entry },
+        // Opening a workspace on a machine is what puts you on that machine.
+        activeMachine: target,
         workspaces: { ...s.workspaces, [w.id]: w },
         workspaceOrder: [w.id, ...s.workspaceOrder],
         activeWorkspaceId: w.id,
@@ -256,12 +268,15 @@ export const createRuntimeSlice = (
     },
 
     async openScratchWorkspace() {
+      // Scratch belongs to the machine you are on: a scratch session on a build
+      // box has to be a directory that exists on the build box.
+      const target = get().activeMachine;
       try {
-        const cwd = await bridge.scratchWorkspace(get().settings.scratchWorkspacePath);
+        const cwd = await bridge.scratchWorkspace(get().settings.scratchWorkspacePath, target);
         return get().openWorkspace({
           cwd,
           harness: get().harness,
-          target: null,
+          target,
           fresh: true,
           projectKind: "scratch",
         });
@@ -296,6 +311,10 @@ export const createRuntimeSlice = (
       set({
         workspaces: { ...get().workspaces, [id]: cleared },
         activeWorkspaceId: id,
+        // The scope follows the work, so opening something from History or the
+        // command palette takes you to its machine rather than showing you a
+        // workspace the rail says you are not on.
+        activeMachine: w.target,
         workspaceOrder: [id, ...get().workspaceOrder.filter((x) => x !== id)],
         ...project(cleared),
       });
@@ -322,41 +341,37 @@ export const createRuntimeSlice = (
       remember();
     },
 
-    async archiveProject(cwd) {
-      if (!cwd) return;
-      const ids = get().workspaceOrder.filter((id) => get().workspaces[id]?.cwd === cwd);
+    async archiveProject(key) {
+      const saved = get().projects[key];
+      if (!saved) return;
+      const ids = get().workspaceOrder.filter((id) => {
+        const w = get().workspaces[id];
+        return w && projectKey(w.target, w.cwd) === key;
+      });
       for (const id of ids) await get().closeWorkspace(id);
 
-      const saved = get().projects[cwd];
-      set({
-        projects: {
-          ...get().projects,
-          [cwd]: { cwd, archived: true, kind: saved?.kind ?? (isScratchWorkspacePath(cwd) ? "scratch" : "folder") },
-        },
-      });
+      set({ projects: { ...get().projects, [key]: { ...saved, archived: true } } });
       remember();
     },
 
-    async deleteProject(cwd) {
-      if (!cwd) return;
-      const ids = get().workspaceOrder.filter((id) => get().workspaces[id]?.cwd === cwd);
+    async deleteProject(key) {
+      if (!get().projects[key]) return;
+      const ids = get().workspaceOrder.filter((id) => {
+        const w = get().workspaces[id];
+        return w && projectKey(w.target, w.cwd) === key;
+      });
       for (const id of ids) await get().closeWorkspace(id);
 
       const projects = { ...get().projects };
-      delete projects[cwd];
+      delete projects[key];
       set({ projects });
       remember();
     },
 
-    restoreProject(cwd) {
-      const saved = get().projects[cwd];
+    restoreProject(key) {
+      const saved = get().projects[key];
       if (!saved?.archived) return;
-      set({
-        projects: {
-          ...get().projects,
-          [cwd]: { ...saved, archived: false },
-        },
-      });
+      set({ projects: { ...get().projects, [key]: { ...saved, archived: false } } });
       remember();
     },
 
@@ -383,14 +398,30 @@ export const createRuntimeSlice = (
       get().openWorkspace({ cwd });
     },
 
-    setTarget(alias) {
-      const id = activeId();
-      if (!id) {
-        set({ ...project({ ...BLANK, target: alias }), target: alias });
-        return;
-      }
-      patch(id, { target: alias, verdict: null, sessionFile: null, selectedSessionPath: null });
-      void get().stopRuntime();
+    /**
+     * Moves to a machine. Nothing starts, stops, or is re-pointed.
+     *
+     * A machine is a place your work sits, not a setting on the work in front
+     * of you. Switching used to re-target the active workspace and kill its
+     * runtime — so a session opened in a local folder was suddenly claimed to
+     * be running in that same path on a box where it does not exist, and
+     * whatever was generating in it died. Machines now behave like separate
+     * desktops: everything you left on one keeps running while you work on
+     * another, and coming back finds it where you left it.
+     */
+    setMachine(alias) {
+      if (get().activeMachine === alias) return;
+      set({ activeMachine: alias });
+      // Land on what you were last doing there. `workspaceOrder` is
+      // most-recently-used first, so the first match is where you left off.
+      const resume = get()
+        .workspaceOrder.map((id) => get().workspaces[id])
+        .find((w) => w && w.target === alias);
+      if (resume) get().activateWorkspace(resume.id);
+      else set({ activeWorkspaceId: null, ...project(BLANK), target: alias });
+      // The models on offer are the ones this machine can actually run.
+      void get().loadModels();
+      remember();
     },
 
     async startRuntime() {

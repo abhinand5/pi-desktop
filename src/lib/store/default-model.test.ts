@@ -111,7 +111,9 @@ describe("usage harness selection", () => {
       peakHour: null,
       favoriteModel: null,
       byModel: [],
-      byDay: [],
+      byMachine: [],
+  unreachable: [],
+  byDay: [],
       firstDay: null,
       lastDay: null,
     };

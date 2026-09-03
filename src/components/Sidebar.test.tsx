@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import Sidebar from "./Sidebar";
 import { useAppStore } from "../lib/agent-store";
 import { bridge } from "../lib/bridge";
-import { createWorkspace } from "../lib/store/workspace";
+import { createWorkspace, projectKey } from "../lib/store/workspace";
 
 const cwd = "/home/abhinand/dev/g14-llm-configs";
 const activePath = "/home/abhinand/.omp/agent/sessions/active.jsonl";
@@ -16,7 +16,7 @@ beforeEach(() => {
   useAppStore.setState({
     sidebarOpen: true,
     harness: "omp",
-    projects: { [cwd]: { cwd, archived: false, kind: "folder" } },
+    projects: { [projectKey(null, cwd)]: { cwd, target: null, archived: false, kind: "folder" } },
     workspaces: { [workspace.id]: workspace },
     workspaceOrder: [workspace.id],
     activeWorkspaceId: workspace.id,
@@ -121,11 +121,11 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Workspace actions for g14-llm-configs" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /^Archive workspace/ }));
     expect(screen.getByText(/Open tabs will close and running agents will stop/)).toBeInTheDocument();
-    expect(useAppStore.getState().projects[cwd].archived).toBe(false);
+    expect(useAppStore.getState().projects[projectKey(null, cwd)].archived).toBe(false);
 
     fireEvent.click(screen.getByRole("button", { name: "Archive workspace now" }));
 
-    await waitFor(() => expect(useAppStore.getState().projects[cwd].archived).toBe(true));
+    await waitFor(() => expect(useAppStore.getState().projects[projectKey(null, cwd)].archived).toBe(true));
     expect(useAppStore.getState().workspaceOrder).toEqual([]);
     expect(useAppStore.getState().sessions).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Restore workspace g14-llm-configs" })).toBeInTheDocument();
@@ -142,7 +142,7 @@ describe("Sidebar", () => {
 
     expect(screen.getByText(/Sessions stay in History/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Delete workspace now" }));
-    expect(deleteProject).toHaveBeenCalledWith(cwd);
+    expect(deleteProject).toHaveBeenCalledWith(projectKey(null, cwd));
 
     useAppStore.setState({ deleteProject: originalDeleteProject });
   });
@@ -162,7 +162,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: "Start scratch session" }));
 
-    await waitFor(() => expect(useAppStore.getState().projects[scratchCwd]?.kind).toBe("scratch"));
+    await waitFor(() => expect(useAppStore.getState().projects[projectKey(null, scratchCwd)]?.kind).toBe("scratch"));
     const state = useAppStore.getState();
     const workspace = state.workspaces[state.activeWorkspaceId!];
     expect(workspace.cwd).toBe(scratchCwd);

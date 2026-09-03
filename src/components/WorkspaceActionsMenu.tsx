@@ -3,8 +3,16 @@ import { Archive, Trash2 } from "lucide-react";
 import { useAppStore } from "../lib/agent-store";
 import { projectLabel } from "../lib/store/workspace";
 
-export default function WorkspaceActionsMenu({ cwd, onClose }: { cwd: string; onClose: () => void }) {
-  const project = useAppStore((s) => s.projects[cwd]);
+export default function WorkspaceActionsMenu({
+  projectKey,
+  onClose,
+}: {
+  /** `projectKey(target, cwd)` — a path on one machine is not the same project
+   *  as the same path on another. */
+  projectKey: string;
+  onClose: () => void;
+}) {
+  const project = useAppStore((s) => s.projects[projectKey]);
   const archiveProject = useAppStore((s) => s.archiveProject);
   const deleteProject = useAppStore((s) => s.deleteProject);
   const restoreProject = useAppStore((s) => s.restoreProject);
@@ -53,21 +61,21 @@ export default function WorkspaceActionsMenu({ cwd, onClose }: { cwd: string; on
           label="Restore workspace"
           hint="Show this folder and its sessions again"
           onClick={() => {
-            restoreProject(cwd);
+            restoreProject(projectKey);
             onClose();
           }}
         />
       ) : confirmingArchive ? (
         <div className="rounded-sm border border-amber/30 bg-amber/5 p-2">
           <p className="mb-2 text-xs leading-snug text-ink-dim">
-            Archive {projectLabel(cwd, project.kind)} workspace? Open tabs will close and running agents will stop.
+            Archive {projectLabel(project.cwd, project.kind)} workspace? Open tabs will close and running agents will stop.
             Sessions stay in History.
           </p>
           <div className="flex gap-1.5">
             <button
               type="button"
               disabled={busy}
-              onClick={() => void mutate(() => archiveProject(cwd))}
+              onClick={() => void mutate(() => archiveProject(projectKey))}
               aria-label="Archive workspace now"
               className="flex-1 rounded-sm bg-amber/15 px-2 py-1 font-mono text-2xs text-amber hover:bg-amber/25 disabled:opacity-50"
             >
@@ -95,13 +103,13 @@ export default function WorkspaceActionsMenu({ cwd, onClose }: { cwd: string; on
       {confirmingDelete ? (
         <div className="rounded-sm border border-red/30 bg-red/5 p-2">
           <p className="mb-2 text-xs leading-snug text-ink-dim">
-            Delete {projectLabel(cwd, project.kind)} workspace? Sessions stay in History.
+            Delete {projectLabel(project.cwd, project.kind)} workspace? Sessions stay in History.
           </p>
           <div className="flex gap-1.5">
             <button
               type="button"
               disabled={busy}
-              onClick={() => void mutate(() => deleteProject(cwd))}
+              onClick={() => void mutate(() => deleteProject(projectKey))}
               aria-label="Delete workspace now"
               className="flex-1 rounded-sm bg-red/15 px-2 py-1 font-mono text-2xs text-red hover:bg-red/25 disabled:opacity-50"
             >

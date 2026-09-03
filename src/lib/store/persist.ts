@@ -16,6 +16,7 @@ import type { HarnessId, PtyProgram } from "../bridge";
 import {
   createWorkspace,
   isScratchWorkspacePath,
+  projectKey,
   type ProjectKind,
   type ProjectWorkspace,
   type Workspace,
@@ -40,10 +41,12 @@ interface StoredProject {
   cwd: string;
   archived: boolean;
   kind?: ProjectKind;
+  /** Absent in stores written before projects knew which machine they were on. */
+  target?: string | null;
 }
 
 interface Stored {
-  version: 1;
+  version: 1 | 2;
   workspaces: StoredWorkspace[];
   /** Index into `workspaces` of the one that was in front. */
   active: number;
@@ -65,13 +68,40 @@ export function loadWorkspaces(): RestoredWorkspaces | null {
     const raw = window.localStorage.getItem(KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Stored;
-    if (parsed?.version !== 1 || !Array.isArray(parsed.workspaces)) return null;
+    if ((parsed?.version !== 1 && parsed?.version !== 2) || !Array.isArray(parsed.workspaces)) return null;
+
+    /*
+     * Version 1 let a workspace's machine be changed after it was created.
+     *
+     * Switching machines re-pointed the workspace in front of you: `target`
+     * became the host while `cwd` stayed whatever local path it already had.
+     * The result is a workspace that claims to live in, say, this machine's
+     * scratch directory *on a build box* — a path that does not exist there, so
+     * a session exits at once and a terminal opens with `cd: no such file or
+     * directory` and a closed connection.
+     *
+     * A remote v1 workspace cannot be told apart from a corrupted one: both are
+     * a host plus a path, and only the far side knows whether the path is real.
+     * So they are dropped on the way in. Local workspaces — every workspace,
+     * for anyone who never added a host — are untouched, and a dropped one
+     * costs a tab, never a session: the files are still on the machine that has
+     * them, and History still lists them.
+     */
+    const dropRepointed = parsed.version === 1;
 
     const projects: Record<string, ProjectWorkspace> = {};
     for (const stored of parsed.projects ?? []) {
       if (!stored?.cwd) continue;
-      projects[stored.cwd] = {
+      // Same reasoning as the workspaces below: a v1 project that names a host
+      // may name a path that only ever existed on this machine, and keeping it
+      // would leave a group in the rail whose every action fails on the far side.
+      if (dropRepointed && stored.target) continue;
+      // An older store has no target, and everything in it was local: that is
+      // the only machine the app could put a project on at the time.
+      const target = stored.target ?? null;
+      projects[projectKey(target, stored.cwd)] = {
         cwd: stored.cwd,
+        target,
         archived: stored.archived === true,
         kind: stored.kind === "scratch" ? "scratch" : "folder",
       };
@@ -80,6 +110,7 @@ export function loadWorkspaces(): RestoredWorkspaces | null {
     const workspaces: Record<string, Workspace> = {};
     const workspaceOrder: string[] = [];
     for (const stored of parsed.workspaces) {
+      if (dropRepointed && stored?.target) continue;
       if (!stored?.cwd || (stored.harness !== "pi" && stored.harness !== "omp")) continue;
       const w = createWorkspace({
         harness: stored.harness,
@@ -97,9 +128,11 @@ export function loadWorkspaces(): RestoredWorkspaces | null {
       workspaceOrder.push(w.id);
       // Version-one stores have no project list; derive active projects from
       // their remembered session tabs during the migration.
-      if (!projects[w.cwd]) {
-        projects[w.cwd] = {
+      const key = projectKey(w.target, w.cwd);
+      if (!projects[key]) {
+        projects[key] = {
           cwd: w.cwd,
+          target: w.target,
           archived: false,
           kind: isScratchWorkspacePath(w.cwd) ? "scratch" : "folder",
         };
@@ -118,10 +151,15 @@ export function saveWorkspaces(state: RestoredWorkspaces): void {
   if (typeof window === "undefined") return;
   const order = state.workspaceOrder.slice(0, MAX);
   const stored: Stored = {
-    version: 1,
+    version: 2,
     projects: Object.values(state.projects)
       .filter((project) => project.cwd)
-      .map((project) => ({ cwd: project.cwd, archived: project.archived, kind: project.kind })),
+      .map((project) => ({
+        cwd: project.cwd,
+        target: project.target,
+        archived: project.archived,
+        kind: project.kind,
+      })),
     workspaces: order.flatMap((id) => {
       const w = state.workspaces[id];
       if (!w?.cwd) return [];

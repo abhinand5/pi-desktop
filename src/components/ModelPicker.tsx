@@ -271,65 +271,46 @@ export function ThinkingChip() {
   );
 }
 
-/** Where the agent runs, and in which folder. */
+/**
+ * Where this session runs, and in which folder.
+ *
+ * Both are stated, neither is a control. A session's machine is settled when it
+ * is opened: it has a process on that box, a session file on that disk, and a
+ * working directory that means nothing anywhere else. This used to be a picker
+ * that re-pointed the session in place — which killed the runtime and left the
+ * workspace claiming to be in a directory the new machine had never heard of.
+ * Machines are switched in the rail, where switching means going to that
+ * machine's own work rather than dragging this session onto it.
+ */
 export function TargetChips() {
   const target = useAppStore((s) => s.target);
-  const hosts = useAppStore((s) => s.hosts);
   const cwd = useAppStore((s) => s.cwd);
-  const setTarget = useAppStore((s) => s.setTarget);
+  const setPanel = useAppStore((s) => s.setPanel);
   const openWorkspace = useAppStore((s) => s.openWorkspace);
-  const [open, setOpen] = useState(false);
-  const ref = useDismiss(open, () => setOpen(false));
-  const place = usePlacement(open, ref, 200);
 
   const chooseFolder = async () => {
+    // A remote folder cannot come from the OS picker, which only sees this
+    // machine's disk.
+    if (target) {
+      setPanel("files");
+      return;
+    }
     const { open: pick } = await import("@tauri-apps/plugin-dialog");
     const dir = await pick({ directory: true, multiple: false });
-    if (typeof dir === "string") openWorkspace({ cwd: dir, target });
+    if (typeof dir === "string") openWorkspace({ cwd: dir, target: null });
   };
 
   const folder = cwd ? projectLabel(cwd) : null;
 
   return (
     <div className="mb-1.5 flex items-center gap-1.5">
-      <div ref={ref} className="relative">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="flex h-control-sm items-center gap-1.5 rounded-sm border border-line px-2 font-mono text-2xs text-ink-dim hover:border-line-strong hover:text-ink-text"
-        >
-          <Server size={10} className={target ? "text-teal" : "text-ink-faint"} />
-          {target ?? "Local"}
-        </button>
-        {open ? (
-          <div className={`absolute left-0 z-50 w-[180px] overflow-hidden rounded-lg border border-line bg-ink-1 p-1 overlay ${panelSide(place)}`}>
-            <button
-              onClick={() => {
-                setTarget(null);
-                setOpen(false);
-              }}
-              className={`w-full rounded-sm px-2 py-1.5 text-left text-base ${
-                target === null ? "bg-ink-2 text-ink-text" : "text-ink-dim hover:bg-ink-2"
-              }`}
-            >
-              Local
-            </button>
-            {hosts.map((h) => (
-              <button
-                key={h.alias}
-                onClick={() => {
-                  setTarget(h.alias);
-                  setOpen(false);
-                }}
-                className={`w-full rounded-sm px-2 py-1.5 text-left text-base ${
-                  target === h.alias ? "bg-ink-2 text-ink-text" : "text-ink-dim hover:bg-ink-2"
-                }`}
-              >
-                {h.alias}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      <span
+        title={target ? `This session runs on ${target}` : "This session runs on this machine"}
+        className="flex h-control-sm items-center gap-1.5 rounded-sm border border-line px-2 font-mono text-2xs text-ink-dim"
+      >
+        <Server size={10} className={target ? "text-teal" : "text-ink-faint"} />
+        {target ?? "Local"}
+      </span>
 
       <button
         onClick={() => void chooseFolder()}

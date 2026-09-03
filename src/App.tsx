@@ -125,7 +125,15 @@ export default function App() {
 function Welcome() {
   const setCwd = useAppStore((s) => s.setCwd);
   const openScratchWorkspace = useAppStore((s) => s.openScratchWorkspace);
+  const activeMachine = useAppStore((s) => s.activeMachine);
+  const setPanel = useAppStore((s) => s.setPanel);
   const openDialog = async () => {
+    // The OS picker only sees this machine's disk, so a remote folder is
+    // chosen in the file browser instead.
+    if (activeMachine) {
+      setPanel("files");
+      return;
+    }
     const { open } = await import("@tauri-apps/plugin-dialog");
     const dir = await open({ directory: true, multiple: false });
     if (typeof dir === "string") setCwd(dir);
@@ -137,7 +145,9 @@ function Welcome() {
       <div className="max-w-[400px] space-y-1.5 text-center">
         <h1 className="text-lg font-medium text-ink-text">Start a session</h1>
         <p className="text-md text-ink-dim">
-          Run pi or omp in a project folder, or start a generic scratch session without choosing one.
+          {activeMachine
+            ? `Run pi or omp in a folder on ${activeMachine}, or start a scratch session there without choosing one.`
+            : "Run pi or omp in a project folder, or start a generic scratch session without choosing one."}
         </p>
       </div>
       <div className="flex flex-col items-stretch gap-2 sm:flex-row">
@@ -152,7 +162,7 @@ function Welcome() {
           onClick={() => void openDialog()}
           className="h-8 rounded-md bg-amber px-4 font-mono text-sm text-on-accent hover:brightness-110"
         >
-          Choose a folder
+          {activeMachine ? `Choose a folder on ${activeMachine}` : "Choose a folder"}
         </button>
       </div>
     </div>

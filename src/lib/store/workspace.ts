@@ -33,8 +33,21 @@ export type ProjectKind = "folder" | "scratch";
 /** A project container shown as one group in the sidebar. */
 export interface ProjectWorkspace {
   cwd: string;
+  /** null = this machine; otherwise the ssh host alias it lives on. */
+  target: string | null;
   archived: boolean;
   kind: ProjectKind;
+}
+
+/**
+ * The identity of a project: a path *and* the machine it is on.
+ *
+ * A path alone is not a project. `~/src` on this laptop and `~/src` on a build
+ * box are different directories on different disks, and keying projects by path
+ * alone merged them into one sidebar group whose sessions belonged to neither.
+ */
+export function projectKey(target: string | null, cwd: string): string {
+  return `${target ?? ""}\u0000${cwd}`;
 }
 
 export interface Workspace {

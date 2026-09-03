@@ -25,8 +25,11 @@ import type { ProjectKind, ProjectWorkspace, Workspace, WorkspaceKind, Workspace
 export type Verdict = "live" | "unverifiable" | "exited" | null;
 
 export interface RuntimeSlice extends WorkspaceProjection {
-  /** Folder-level workspaces, independent of the session tabs inside them. */
+  /** Project containers, keyed by `projectKey(target, cwd)` — a path on one
+   *  machine is a different project from the same path on another. */
   projects: Record<string, ProjectWorkspace>;
+  /** Which machine's work the rail is showing. Null is this machine. */
+  activeMachine: string | null;
   /** Every open session workspace, live or idle, keyed by id. */
   workspaces: Record<string, Workspace>;
   /** Sidebar order — most recently used first. */
@@ -52,16 +55,18 @@ export interface RuntimeSlice extends WorkspaceProjection {
   activateWorkspace(id: string): void;
   /** Closes one session tab while preserving the project and session file. */
   closeWorkspace(id: string): Promise<void>;
-  /** Hides a folder workspace and closes all of its session tabs. */
-  archiveProject(cwd: string): Promise<void>;
-  /** Removes a folder workspace from the app without touching its files. */
-  deleteProject(cwd: string): Promise<void>;
-  /** Makes an archived folder workspace visible again. */
-  restoreProject(cwd: string): void;
+  /** Hides a project and closes all of its session tabs. Takes a `projectKey`. */
+  archiveProject(key: string): Promise<void>;
+  /** Removes a project from the app without touching its files. Takes a `projectKey`. */
+  deleteProject(key: string): Promise<void>;
+  /** Makes an archived project visible again. Takes a `projectKey`. */
+  restoreProject(key: string): void;
 
   setHarness(harness: HarnessId): void;
   setCwd(cwd: string): void;
-  setTarget(alias: string | null): void;
+  /** Moves to a machine. Never starts, stops, or re-points a session — what is
+   *  running on the machine you leave goes on running. */
+  setMachine(alias: string | null): void;
   startRuntime(): Promise<void>;
   stopRuntime(): Promise<void>;
   reconnect(): Promise<void>;
@@ -108,6 +113,9 @@ export interface BashResult {
 export interface CatalogSlice {
   models: ModelInfo[];
   modelsError: string | null;
+  /** `harness@machine` the loaded catalog belongs to, so a stale reply from a
+   *  machine you have since left cannot overwrite the one you are on. */
+  modelsFor: string | null;
   /** The harness's own default model, read from its native config. */
   harnessDefault: DefaultModelRef | null;
   sessions: SessionSummary[];
@@ -264,6 +272,15 @@ export interface DayUsage {
   tokens: number;
 }
 
+/** One machine's share of a report that spans several. */
+export interface MachineUsage {
+  machine: string;
+  sessions: number;
+  messages: number;
+  tokens: Tokens;
+  cost: number;
+}
+
 /** Aggregate usage, derived from the harness's own session files. */
 export interface UsageReport {
   sessions: number;
@@ -279,6 +296,10 @@ export interface UsageReport {
   peakHour: number | null;
   favoriteModel: string | null;
   byModel: ModelUsage[];
+  /** Where the work happened. One row per machine that was scanned. */
+  byMachine: MachineUsage[];
+  /** Machines that could not be read this time, named rather than dropped. */
+  unreachable: string[];
   byDay: DayUsage[];
   firstDay: string | null;
   lastDay: string | null;

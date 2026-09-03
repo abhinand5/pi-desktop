@@ -142,8 +142,57 @@ function Overview({ usage }: { usage: UsageReport }) {
 
       <Heatmap days={usage.byDay} />
 
+      <Machines usage={usage} />
+
       <p className="mt-3 text-sm text-ink-faint">{comparison(usage.tokens.total)}</p>
     </>
+  );
+}
+
+/**
+ * Where the work happened.
+ *
+ * The totals above cover every machine, which is the point — usage is a fact
+ * about you, not about a laptop. But "which box did that" is a real question,
+ * and it is only worth the room once there is more than one answer, so the
+ * breakdown appears when a second machine does.
+ */
+function Machines({ usage }: { usage: UsageReport }) {
+  const rows = usage.byMachine.filter((m) => m.messages > 0);
+  if (rows.length < 2 && usage.unreachable.length === 0) return null;
+  const max = Math.max(1, ...rows.map((m) => m.tokens.total));
+
+  return (
+    <div className="mt-4">
+      <div className="mb-1.5 font-mono text-2xs tracking-wider text-ink-faint uppercase">machines</div>
+      <div className="overflow-hidden rounded-lg border border-line bg-ink-1">
+        {rows.map((m) => (
+          <div key={m.machine} className="border-b border-line/60 px-4 py-3 last:border-b-0">
+            <div className="flex items-baseline gap-3">
+              <span className="min-w-0 flex-1 truncate font-mono text-sm text-ink-text">{m.machine}</span>
+              <span className="shrink-0 font-mono text-2xs text-ink-faint">
+                {m.sessions.toLocaleString()} sessions · {compact(m.tokens.total)} tok
+                {m.cost > 0 ? ` · ${formatCost(m.cost)}` : ""}
+              </span>
+            </div>
+            <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-ink-3">
+              <div
+                className="h-full rounded-full bg-teal"
+                style={{ width: `${(m.tokens.total / max) * 100}%` }}
+              />
+            </div>
+          </div>
+        ))}
+        {usage.unreachable.length ? (
+          // Said out loud: a total that quietly leaves out a machine is worse
+          // than one that names the machine it could not read.
+          <div className="border-t border-line/60 px-4 py-2.5 text-sm text-ink-faint">
+            Could not read {usage.unreachable.join(", ")} — these figures leave{" "}
+            {usage.unreachable.length === 1 ? "it" : "them"} out.
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

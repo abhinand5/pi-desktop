@@ -54,6 +54,9 @@ pub struct RuntimeInfo {
 pub struct AppState {
     runtimes: Mutex<HashMap<String, Arc<RuntimeEntry>>>,
     next_id: AtomicU64,
+    /// Parsed session files, kept for the life of the app so the usage page is
+    /// paid for once rather than on every visit.
+    usage: Arc<harness::usage::UsageCache>,
 }
 
 fn state_runtimes<'a>(state: &'a State<'_, AppState>) -> std::sync::MutexGuard<'a, HashMap<String, Arc<RuntimeEntry>>> {
@@ -114,6 +117,55 @@ async fn push_bridge_remote(
         return Err(format!("could not install the session bridge on {destination}"));
     }
     Ok(PathBuf::from(remote))
+}
+
+/// Finds the harness binary on a remote host, through a login shell.
+///
+/// `ssh host -- pi --mode rpc` runs the command under a NON-login shell, whose
+/// PATH is the system default. Every harness installer puts its binary in a
+/// per-user directory — `~/.local/bin` — that only a login shell's profile adds
+/// to PATH. The binary is there; the shell sent to look for it is the wrong
+/// one, so the exec fails with 127 and the desktop reports the far end of that:
+/// "child process exited: client closed".
+///
+/// The fix is not to run the agent itself under `-l`: a login shell prints
+/// whatever the user's profile prints, and this transport carries a JSONL RPC
+/// stream on the same stdout. So a login shell is asked once, up front, where
+/// the binary is, and the agent is then exec'd by absolute path.
+async fn resolve_remote_program(entry: &ssh::HostEntry, program: &str) -> Result<String, String> {
+    let mut args = ssh_transport_args(&entry.destination, entry.port);
+    args.push("--".into());
+    args.push(format!("$SHELL -lc {}", sh_quote(&format!("command -v {}", sh_quote(program)))));
+
+    let mut active = LocalSpawner
+        .spawn(CommandSpec::new("ssh").args(args))
+        .await
+        .map_err(|e| format!("could not reach {}: {e}", entry.alias))?;
+    let mut buf = Vec::new();
+    {
+        use tokio::io::AsyncReadExt;
+        tokio::time::timeout(std::time::Duration::from_secs(20), active.stdout.read_to_end(&mut buf))
+            .await
+            .map_err(|_| format!("{} did not answer in time", entry.alias))?
+            .map_err(|e| e.to_string())?;
+    }
+    let _ = active.child.wait().await;
+
+    // The last absolute path wins: a profile that prints a banner prints it
+    // before `command -v` ever runs.
+    let found = String::from_utf8_lossy(&buf)
+        .lines()
+        .map(str::trim)
+        .rfind(|line| line.starts_with('/'))
+        .map(str::to_string);
+
+    found.ok_or_else(|| {
+        format!(
+            "{program} is not installed on {} — its login shell has no `{program}` on PATH. \
+             Install the agent there, then start the session again.",
+            entry.alias
+        )
+    })
 }
 
 /// Spawns an agent runtime — locally or on a registered SSH host — and
@@ -181,6 +233,12 @@ pub async fn runtime_start(
     }
 
     let mut spec: CommandSpec = h.spawn_spec(&opts);
+
+    // Resolved before the argv is wrapped, so the ssh channel execs a path that
+    // exists rather than a bare name the remote shell cannot find.
+    if let Some(entry) = remote_entry.as_ref() {
+        spec.program = resolve_remote_program(entry, &spec.program).await?;
+    }
 
     // Broker mode: inject credential env before transport wrapping.
     if let Some(env) = &broker_env {
@@ -387,14 +445,201 @@ pub async fn session_delete(path: String) -> Result<(), String> {
 /// Derived entirely from those files — the desktop keeps no telemetry of its
 /// own — so the figures cover TUI sessions as well as ones driven from here.
 /// `all` merges pi and omp into one report.
+/// Lists a remote's session files with their sizes.
+///
+/// Size, not mtime: `find -printf` is GNU-only and a remote may not have it,
+/// while `wc -c` is everywhere. Session files are append-only, so a size that
+/// has not moved is a file that has not changed — which is all the cache needs.
+async fn remote_listing(entry: &ssh::HostEntry) -> Result<Vec<harness::usage::FileStamp>, String> {
+    let roots = ["~/.pi/agent/sessions", "~/.omp/agent/sessions"];
+    let script = format!(
+        "for d in {}; do [ -d \"$d\" ] || continue; \
+         find \"$d\" -name '*.jsonl' -type f 2>/dev/null | while IFS= read -r f; do \
+         printf '%s %s\\n' \"$(wc -c < \"$f\" | tr -d ' ')\" \"$f\"; done; done",
+        roots.iter().map(|r| remote_path_expr(r)).collect::<Vec<_>>().join(" ")
+    );
+    let out = ssh_capture(entry, &script, false, 30).await?;
+    Ok(String::from_utf8_lossy(&out)
+        .lines()
+        .filter_map(|line| {
+            let (len, path) = line.trim().split_once(' ')?;
+            Some(harness::usage::FileStamp {
+                path: path.to_string(),
+                // Unknown, and unneeded: the length carries the invalidation.
+                mtime: 0,
+                len: len.parse().ok()?,
+            })
+        })
+        .collect())
+}
+
+/// Streams several remote files in one round trip.
+///
+/// Length-prefixed rather than separated by a marker: session files are
+/// arbitrary JSON text and any sentinel could occur inside one. Compressed on
+/// the wire, because JSONL gives an order of magnitude back for free.
+async fn remote_fetch(
+    entry: &ssh::HostEntry,
+    stamps: &[harness::usage::FileStamp],
+) -> Result<HashMap<String, Vec<u8>>, String> {
+    if stamps.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let list = stamps.iter().map(|s| sh_quote(&s.path)).collect::<Vec<_>>().join(" ");
+    let script = format!(
+        "for f in {list}; do printf '%s %s\\n' \"$(wc -c < \"$f\" | tr -d ' ')\" \"$f\"; cat \"$f\"; done"
+    );
+    let out = ssh_capture(entry, &script, true, 180).await?;
+
+    let mut files = HashMap::new();
+    let mut rest = out.as_slice();
+    while let Some(nl) = rest.iter().position(|b| *b == b'\n') {
+        let header = String::from_utf8_lossy(&rest[..nl]).into_owned();
+        let Some((len, path)) = header.trim().split_once(' ') else { break };
+        let Ok(len) = len.parse::<usize>() else { break };
+        rest = &rest[nl + 1..];
+        if rest.len() < len {
+            // A file grew or shrank mid-read; stop rather than desync.
+            break;
+        }
+        files.insert(path.to_string(), rest[..len].to_vec());
+        rest = &rest[len..];
+    }
+    Ok(files)
+}
+
+/// Runs one command on a host and returns its stdout.
+async fn ssh_capture(
+    entry: &ssh::HostEntry,
+    script: &str,
+    compress: bool,
+    timeout_secs: u64,
+) -> Result<Vec<u8>, String> {
+    let mut args = ssh_transport_args(&entry.destination, entry.port);
+    // The usage page must not wait on a box that is switched off. Without this
+    // an unreachable host hangs on the kernel's TCP timeout — minutes, during
+    // which the page shows nothing.
+    args.push("-o".into());
+    args.push("ConnectTimeout=8".into());
+    if compress {
+        args.push("-C".into());
+    }
+    args.push("--".into());
+    args.push(format!("$SHELL -lc {}", sh_quote(script)));
+
+    let mut active = LocalSpawner
+        .spawn(CommandSpec::new("ssh").args(args))
+        .await
+        .map_err(|e| format!("could not reach {}: {e}", entry.alias))?;
+    let mut out = Vec::new();
+    {
+        use tokio::io::AsyncReadExt;
+        tokio::time::timeout(
+            std::time::Duration::from_secs(timeout_secs),
+            active.stdout.read_to_end(&mut out),
+        )
+        .await
+        .map_err(|_| format!("{} did not answer in time", entry.alias))?
+        .map_err(|e| e.to_string())?;
+    }
+    let _ = active.child.wait().await;
+    Ok(out)
+}
+
+/// Aggregate usage across every machine: this one and every registered host.
+///
+/// Runs off the main thread and against a per-file cache, so the first visit
+/// pays for the parse and every later one — including a change of the window
+/// filter — is a fold over buckets that are already in memory.
 #[tauri::command]
-pub fn usage_report(harness: HarnessParam, since_days: Option<u32>) -> Result<harness::UsageReport, String> {
+pub async fn usage_report(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    harness: HarnessParam,
+    since_days: Option<u32>,
+    // Host aliases to include. Omit for every registered host.
+    hosts: Option<Vec<String>>,
+) -> Result<harness::UsageReport, String> {
     let harnesses: Vec<Arc<dyn harness::Harness>> = match harness {
         HarnessParam::All => vec![by_id(HarnessId::Pi), by_id(HarnessId::Omp)],
         HarnessParam::Pi => vec![by_id(HarnessId::Pi)],
         HarnessParam::Omp => vec![by_id(HarnessId::Omp)],
     };
-    harness::usage::report(&harnesses, since_days).map_err(|e| e.to_string())
+
+    let cache = state.usage.clone();
+    let local = {
+        let cache = cache.clone();
+        // Reading and parsing tens of megabytes is not something to do on the
+        // thread that paints the window.
+        tokio::task::spawn_blocking(move || {
+            let listing = harness::usage::local_listing(&harnesses);
+            let stale = cache.stale(harness::usage::THIS_MACHINE, &listing);
+            harness::usage::parse_into_cache(
+                &cache,
+                harness::usage::THIS_MACHINE,
+                &stale,
+                harness::usage::read_local,
+            );
+            cache.collect(harness::usage::THIS_MACHINE, &listing)
+        })
+        .await
+        .map_err(|e| format!("usage scan: {e}"))?
+    };
+
+    let mut machines = vec![local];
+    let mut unreachable = Vec::new();
+
+    let aliases: Vec<String> = match hosts {
+        Some(list) => list,
+        None => ssh::load_registry(&data_dir(&app)).hosts.into_iter().map(|h| h.alias).collect(),
+    };
+
+    // Hosts are read concurrently: they are independent, and one slow link
+    // should cost the report its own latency rather than everyone else's.
+    let mut tasks = Vec::new();
+    for alias in aliases {
+        let Ok(entry) = ssh_host(&app, &alias) else {
+            unreachable.push(alias);
+            continue;
+        };
+        let cache = cache.clone();
+        tasks.push(tauri::async_runtime::spawn(async move {
+            let alias = entry.alias.clone();
+            (alias, remote_machine(&cache, &entry).await)
+        }));
+    }
+    for task in tasks {
+        // One unreachable box must not cost the report: it is named instead.
+        match task.await {
+            Ok((_, Ok(machine))) => machines.push(machine),
+            Ok((alias, Err(_))) => unreachable.push(alias),
+            Err(_) => {}
+        }
+    }
+
+    let mut report = harness::usage::merge(&machines, since_days);
+    report.unreachable = unreachable;
+    Ok(report)
+}
+
+async fn remote_machine(
+    cache: &Arc<harness::usage::UsageCache>,
+    entry: &ssh::HostEntry,
+) -> Result<harness::usage::MachineFiles, String> {
+    let listing = remote_listing(entry).await?;
+    let stale = cache.stale(&entry.alias, &listing);
+    let fetched = remote_fetch(entry, &stale).await?;
+
+    let cache = cache.clone();
+    let alias = entry.alias.clone();
+    tokio::task::spawn_blocking(move || {
+        harness::usage::parse_into_cache(&cache, &alias, &stale, |stamp| {
+            fetched.get(&stamp.path).cloned()
+        });
+        cache.collect(&alias, &listing)
+    })
+    .await
+    .map_err(|e| format!("usage parse: {e}"))
 }
 
 /// The harness's own default model — what every new session starts on, read
@@ -499,12 +744,78 @@ fn create_scratch_session(root: &Path) -> Result<PathBuf, String> {
     Err("create scratch session: too many name collisions".into())
 }
 
-/// Resolves and creates a fresh local app-owned scratch session directory.
-/// Scratch sessions deliberately stay local, even when an SSH host is selected
-/// for project work.
+/// The remote scratch root. Mirrors the local app-owned directory, but on the
+/// far side — a scratch session on a build box has to be a directory that
+/// exists on the build box.
+const REMOTE_SCRATCH_ROOT: &str = "~/.pi-desktop/scratch-workspaces";
+
+/// Creates a fresh scratch session directory on a remote host and returns its
+/// absolute path, which is what the agent will be started in.
+async fn remote_scratch_workspace(
+    entry: &ssh::HostEntry,
+    configured: Option<&str>,
+) -> Result<String, String> {
+    let root = configured.unwrap_or(REMOTE_SCRATCH_ROOT);
+    // `mkdir -p` then one `mktemp -d` inside it: the remote picks the unique
+    // name, so two desktops racing for the same host cannot collide, and the
+    // absolute path it prints is what the session runs in.
+    let script = format!(
+        "set -e; root={}; mkdir -p \"$root\"; mktemp -d \"$root/session-XXXXXXXX\"",
+        remote_path_expr(root)
+    );
+    let mut args = ssh_transport_args(&entry.destination, entry.port);
+    args.push("--".into());
+    args.push(script);
+
+    let mut active = LocalSpawner
+        .spawn(CommandSpec::new("ssh").args(args))
+        .await
+        .map_err(|e| format!("could not reach {}: {e}", entry.alias))?;
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    {
+        use tokio::io::AsyncReadExt;
+        let both = async {
+            active.stdout.read_to_end(&mut out).await?;
+            active.stderr.read_to_end(&mut err).await
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(20), both)
+            .await
+            .map_err(|_| format!("{} did not answer in time", entry.alias))?
+            .map_err(|e| e.to_string())?;
+    }
+    let _ = active.child.wait().await;
+
+    match String::from_utf8_lossy(&out).lines().map(str::trim).rfind(|l| l.starts_with('/')) {
+        Some(dir) => Ok(dir.to_string()),
+        None => {
+            let detail = String::from_utf8_lossy(&err);
+            let detail = detail.trim();
+            Err(if detail.is_empty() {
+                format!("could not create a scratch directory on {}", entry.alias)
+            } else {
+                format!("could not create a scratch directory on {}: {detail}", entry.alias)
+            })
+        }
+    }
+}
+
+/// Resolves and creates a fresh scratch session directory on the machine the
+/// session will run on — this one, or the selected SSH host.
 #[tauri::command]
-pub fn scratch_workspace(app: tauri::AppHandle, path: Option<String>) -> Result<String, String> {
+pub async fn scratch_workspace(
+    app: tauri::AppHandle,
+    path: Option<String>,
+    host: Option<String>,
+) -> Result<String, String> {
     use tauri::Manager;
+
+    let configured = path.as_deref().map(str::trim).filter(|value| !value.is_empty());
+
+    if let Some(alias) = host.as_deref() {
+        let entry = ssh_host(&app, alias)?;
+        return remote_scratch_workspace(&entry, configured).await;
+    }
 
     let configured = path.as_deref().map(str::trim).filter(|value| !value.is_empty());
     let root = if let Some(configured) = configured {
@@ -628,6 +939,23 @@ fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
+/// Builds the shell word for a remote path, expanding a leading `~` the way an
+/// unquoted path would expand on the far side.
+///
+/// Quoting is not optional — paths have spaces in them — but quoting `~` turns
+/// it into a literal filename, and no such file exists. That is why browsing a
+/// host reported every home directory as empty: `ls -- '~'` failed, its
+/// complaint went to stderr, and an empty stdout parsed as zero entries.
+fn remote_path_expr(path: &str) -> String {
+    if path == "~" {
+        return "\"$HOME\"".into();
+    }
+    match path.strip_prefix("~/") {
+        Some(rest) => format!("\"$HOME\"/{}", sh_quote(rest)),
+        None => sh_quote(path),
+    }
+}
+
 fn ssh_transport_args(host: &str, port: Option<u16>) -> Vec<String> {
     let mut args: Vec<String> = harness::ssh::SSH_OPTIONS.iter().map(|s| s.to_string()).collect();
     if let Some(p) = port {
@@ -643,9 +971,11 @@ pub async fn ssh_fs_list(host: String, port: Option<u16>, path: String) -> Resul
     if path.is_empty() {
         return Err("path required".into());
     }
-    // ls -Apl: one entry per line, dirs carry a trailing "/" — the most
-    // portable listing across GNU/BSD/busybox remotes.
-    let remote = format!("ls -Apl -- {}", sh_quote(&path));
+    // `ls -Ap -1`: one bare name per line, directories carrying a trailing "/" —
+    // the most portable listing across GNU/BSD/busybox remotes. Not `-l`, which
+    // is the long format: it prepends a "total" line and puts nine columns in
+    // front of every name, none of which this parser expects.
+    let remote = format!("ls -Ap -1 -- {}", remote_path_expr(&path));
     let mut args = ssh_transport_args(&host, port);
     args.push(remote);
     let mut active = LocalSpawner
@@ -653,16 +983,32 @@ pub async fn ssh_fs_list(host: String, port: Option<u16>, path: String) -> Resul
         .await
         .map_err(|e| format!("ssh failed: {e}"))?;
     let mut buf = Vec::new();
+    let mut errbuf = Vec::new();
     {
         use tokio::io::AsyncReadExt;
-        tokio::time::timeout(std::time::Duration::from_secs(20), active.stdout.read_to_end(&mut buf))
+        let both = async {
+            active.stdout.read_to_end(&mut buf).await?;
+            active.stderr.read_to_end(&mut errbuf).await
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(20), both)
             .await
             .map_err(|_| "list timed out".to_string())?
             .map_err(|e| e.to_string())?;
     }
     let mut child = active.child;
-    let _ = child.wait().await;
+    let status = child.wait().await;
     let out = String::from_utf8_lossy(&buf);
+
+    // A failed listing used to read as an empty directory. Say what happened.
+    if out.trim().is_empty() && !status.map(|s| s.success()).unwrap_or(false) {
+        let detail = String::from_utf8_lossy(&errbuf);
+        let detail = detail.trim();
+        return Err(if detail.is_empty() {
+            format!("could not list {path} on {host}")
+        } else {
+            detail.to_string()
+        });
+    }
     let base = path.trim_end_matches('/');
     let entries: Vec<FsEntry> = out
         .lines()
@@ -682,7 +1028,7 @@ pub async fn ssh_fs_read(host: String, port: Option<u16>, path: String) -> Resul
     if path.is_empty() {
         return Err("path required".into());
     }
-    let remote = format!("cat -- {}", sh_quote(&path));
+    let remote = format!("cat -- {}", remote_path_expr(&path));
     let mut args = ssh_transport_args(&host, port);
     args.push(remote);
     let mut active = LocalSpawner
@@ -918,10 +1264,49 @@ pub fn sessions_list(harness: HarnessParam) -> Vec<harness::SessionSummary> {
 }
 
 
+/// Runs a harness command on an SSH host.
+///
+/// The catalog probe, like the session itself, has to run where the agent lives
+/// — a remote box has its own providers, its own models, and its own idea of
+/// which of them are configured. Wrapping the spec rather than duplicating the
+/// probe means the RPC and JSON-CLI catalogs both work remotely for free.
+struct SshSpawner {
+    destination: String,
+    port: Option<u16>,
+    /// The absolute remote path, already resolved through a login shell.
+    program: String,
+}
+
+impl harness::spec::Spawner for SshSpawner {
+    fn spawn(
+        &self,
+        mut spec: CommandSpec,
+    ) -> harness::spec::BoxFuture<harness::Result<harness::spec::ActiveProcess>> {
+        spec.program = self.program.clone();
+        // The cwd is this machine's; the remote command runs in the remote
+        // home. A catalog probe does not care where it stands.
+        spec.cwd = None;
+        let wrapped = ssh::wrap(&self.destination, self.port, None, &spec);
+        harness::spec::LocalSpawner.spawn(wrapped)
+    }
+}
+
 #[tauri::command]
-pub async fn models_list(harness: HarnessParam) -> Result<Vec<harness::ModelInfo>, String> {
+pub async fn models_list(
+    app: tauri::AppHandle,
+    harness: HarnessParam,
+    host: Option<String>,
+) -> Result<Vec<harness::ModelInfo>, String> {
     let h = by_id(harness.single()?);
-    harness::models::list_models_local(h).await.map_err(|e| e.to_string())
+    let Some(alias) = host else {
+        return harness::models::list_models_local(h).await.map_err(|e| e.to_string());
+    };
+
+    let entry = ssh_host(&app, &alias)?;
+    let probe = h.catalog_spec(&harness::spec::CatalogOptions::default());
+    let program = resolve_remote_program(&entry, &probe.program).await?;
+    let spawner = SshSpawner { destination: entry.destination.clone(), port: entry.port, program };
+    harness::models::list_models(h, &spawner).await.map_err(|e| e.to_string())
 }
 
 // ---------- SSH host registry + reachability ----------
@@ -993,8 +1378,25 @@ pub async fn ssh_host_test(host: String, port: Option<u16>) -> HostProbe {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_scratch_session, encode_rgba_png, expand_scratch_home};
+    use super::{create_scratch_session, encode_rgba_png, expand_scratch_home, remote_path_expr};
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn expands_a_leading_tilde_but_still_quotes_the_rest() {
+        // The bug this pins: `'~'` is a filename, not the home directory, so a
+        // quoted tilde listed nothing and every remote home read as empty.
+        assert_eq!(remote_path_expr("~"), "\"$HOME\"");
+        assert_eq!(remote_path_expr("~/src"), "\"$HOME\"/'src'");
+        assert_eq!(remote_path_expr("~/my papers"), "\"$HOME\"/'my papers'");
+        // A tilde anywhere but the front is an ordinary character.
+        assert_eq!(remote_path_expr("/srv/~backup"), "'/srv/~backup'");
+        assert_eq!(remote_path_expr("/home/ubuntu"), "'/home/ubuntu'");
+    }
+
+    #[test]
+    fn quotes_a_path_that_would_otherwise_break_out_of_its_word() {
+        assert_eq!(remote_path_expr("~/it's"), "\"$HOME\"/'it'\\''s'");
+    }
 
     #[test]
     fn encodes_clipboard_pixels_as_png() {

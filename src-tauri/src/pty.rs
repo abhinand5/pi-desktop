@@ -106,11 +106,20 @@ fn remote_command(program: PtyProgram, cwd: &str, destination: &str, port: Optio
         cmd.arg(p.to_string());
     }
     cmd.arg(destination);
-    let quoted = shell_quote(cwd);
+    let dir = remote_dir_expr(cwd);
+    // `cd X && exec …` closes the connection when the directory is missing:
+    // nothing execs, ssh exits, and all you get is the shell's complaint and
+    // "Connection closed". A terminal that opens somewhere is far better than
+    // one that vanishes, so a bad path says so and falls back to the home
+    // directory — which is where a terminal opens by default anyway.
+    let enter = format!(
+        "cd {dir} 2>/dev/null || {{ printf '\\033[33m%s\\033[0m\\r\\n'          \"pi-desktop: no such directory on this machine: {}; opened ~ instead\"; cd; }}",
+        cwd.replace('"', "'")
+    );
     let inner = match program {
-        PtyProgram::Shell => format!("cd {quoted} && exec ${{SHELL:-/bin/sh}} -l"),
-        PtyProgram::Pi => format!("cd {quoted} && exec pi"),
-        PtyProgram::Omp => format!("cd {quoted} && exec omp"),
+        PtyProgram::Shell => format!("{enter}; exec ${{SHELL:-/bin/sh}} -l"),
+        PtyProgram::Pi => format!("{enter}; exec pi"),
+        PtyProgram::Omp => format!("{enter}; exec omp"),
     };
     cmd.arg(format!("$SHELL -l -c {}", shell_quote(&inner)));
     apply_term_env(&mut cmd);
@@ -120,6 +129,20 @@ fn remote_command(program: PtyProgram, cwd: &str, destination: &str, port: Optio
 /// Single-quote for a POSIX shell, closing and reopening around any quote.
 fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+/// The shell word for a remote directory, expanding a leading `~`.
+///
+/// Quoting is right for paths with spaces and wrong for a tilde: `'~'` is a
+/// filename, and no such file exists.
+fn remote_dir_expr(path: &str) -> String {
+    if path == "~" {
+        return "\"$HOME\"".into();
+    }
+    match path.strip_prefix("~/") {
+        Some(rest) => format!("\"$HOME\"/{}", shell_quote(rest)),
+        None => shell_quote(path),
+    }
 }
 
 /// What the frontend's emulator actually supports. Claiming less would cost
@@ -331,6 +354,25 @@ mod tests {
         assert!(remote.starts_with("$SHELL -l -c "), "{remote}");
         assert!(remote.contains(r"cd '\''/srv/work'\''"), "{remote}");
         assert!(remote.contains("exec omp"), "{remote}");
+    }
+
+    #[test]
+    fn a_missing_directory_opens_the_home_directory_instead_of_closing() {
+        // `cd X && exec shell` exits when the directory is gone, so the pane
+        // dies with "Connection closed" and the user is left with a raw shell
+        // error. The terminal has to survive a path that is not there.
+        let cmd = remote_command(PtyProgram::Shell, "/gone", "me@box", None);
+        let remote = cmd.get_argv().last().unwrap().to_string_lossy().into_owned();
+        assert!(remote.contains("2>/dev/null ||"), "{remote}");
+        assert!(remote.contains("no such directory on this machine"), "{remote}");
+        assert!(remote.contains("exec ${SHELL:-/bin/sh} -l"), "{remote}");
+    }
+
+    #[test]
+    fn a_tilde_reaches_the_remote_home_rather_than_a_file_called_tilde() {
+        assert_eq!(remote_dir_expr("~"), "\"$HOME\"");
+        assert_eq!(remote_dir_expr("~/src"), "\"$HOME\"/'src'");
+        assert_eq!(remote_dir_expr("/srv/work"), "'/srv/work'");
     }
 
     /// The whole path, minus Tauri: open a real pty, run a command in a real
