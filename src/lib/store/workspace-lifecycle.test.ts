@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../agent-store";
 import { bridge } from "../bridge";
-import { createWorkspace, projectKey, workspaceTitle } from "./workspace";
+import { createWorkspace, projectKey, projectName, workspaceTitle } from "./workspace";
 
 const cwd = "/w/papers";
 
@@ -72,6 +72,15 @@ describe("project workspace lifecycle", () => {
     useAppStore.getState().restoreProject(projectKey(null, cwd));
 
     expect(useAppStore.getState().projects[projectKey(null, cwd)]).toEqual({ cwd, target: null, archived: false, kind: "folder" });
+  });
+
+  it("names a project from the last segment of either kind of path", () => {
+    // A Windows path has no "/" in it, so splitting on that alone returned the
+    // whole thing and every label printed a full path.
+    expect(projectName("/home/me/dev/pi-desktop")).toBe("pi-desktop");
+    expect(projectName("C:\\Users\\me\\dev\\pi-desktop")).toBe("pi-desktop");
+    expect(projectName("C:\\Users\\me\\dev\\pi-desktop\\")).toBe("pi-desktop");
+    expect(projectName("")).toBe("no folder");
   });
 
   it("uses the first user message line for an open workspace title", () => {

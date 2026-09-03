@@ -135,21 +135,32 @@ async fn push_bridge_remote(
 async fn resolve_remote_program(entry: &ssh::HostEntry, program: &str) -> Result<String, String> {
     let mut args = ssh_transport_args(&entry.destination, entry.port);
     args.push("--".into());
-    args.push(format!("$SHELL -lc {}", sh_quote(&format!("command -v {}", sh_quote(program)))));
+    // `${SHELL:-sh}`: sshd normally sets SHELL from the passwd entry, but a
+    // locked-down account may not have it, and an unset one would leave the
+    // remote running ` -lc …`.
+    args.push(format!(
+        "${{SHELL:-sh}} -lc {}",
+        sh_quote(&format!("command -v {}", sh_quote(program)))
+    ));
 
     let mut active = LocalSpawner
         .spawn(CommandSpec::new("ssh").args(args))
         .await
         .map_err(|e| format!("could not reach {}: {e}", entry.alias))?;
     let mut buf = Vec::new();
+    let mut errbuf = Vec::new();
     {
         use tokio::io::AsyncReadExt;
-        tokio::time::timeout(std::time::Duration::from_secs(20), active.stdout.read_to_end(&mut buf))
+        let both = async {
+            active.stdout.read_to_end(&mut buf).await?;
+            active.stderr.read_to_end(&mut errbuf).await
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(20), both)
             .await
             .map_err(|_| format!("{} did not answer in time", entry.alias))?
             .map_err(|e| e.to_string())?;
     }
-    let _ = active.child.wait().await;
+    let status = active.child.wait().await;
 
     // The last absolute path wins: a profile that prints a banner prints it
     // before `command -v` ever runs.
@@ -158,8 +169,22 @@ async fn resolve_remote_program(entry: &ssh::HostEntry, program: &str) -> Result
         .map(str::trim)
         .rfind(|line| line.starts_with('/'))
         .map(str::to_string);
+    if let Some(path) = found {
+        return Ok(path);
+    }
 
-    found.ok_or_else(|| {
+    // Nothing on stdout is not the same answer as "the binary is missing", and
+    // saying so was wrong in the most misleading direction: the desktop told
+    // people to install an agent that was already there, because the box was
+    // asleep or the key was not loaded. `ssh` reserves exit 255 for its own
+    // failures — anything else came from the remote shell, which did run.
+    let detail = String::from_utf8_lossy(&errbuf);
+    let detail = detail.trim();
+    let ssh_failed = status.map(|s| s.code() == Some(255)).unwrap_or(true);
+    Err(if ssh_failed {
+        let why = if detail.is_empty() { "no answer from ssh".to_string() } else { detail.to_string() };
+        format!("could not reach {}: {why}", entry.alias)
+    } else {
         format!(
             "{program} is not installed on {} — its login shell has no `{program}` on PATH. \
              Install the agent there, then start the session again.",
@@ -532,17 +557,32 @@ async fn ssh_capture(
         .await
         .map_err(|e| format!("could not reach {}: {e}", entry.alias))?;
     let mut out = Vec::new();
+    let mut err = Vec::new();
     {
         use tokio::io::AsyncReadExt;
-        tokio::time::timeout(
-            std::time::Duration::from_secs(timeout_secs),
-            active.stdout.read_to_end(&mut out),
-        )
-        .await
-        .map_err(|_| format!("{} did not answer in time", entry.alias))?
-        .map_err(|e| e.to_string())?;
+        let both = async {
+            active.stdout.read_to_end(&mut out).await?;
+            active.stderr.read_to_end(&mut err).await
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), both)
+            .await
+            .map_err(|_| format!("{} did not answer in time", entry.alias))?
+            .map_err(|e| e.to_string())?;
     }
-    let _ = active.child.wait().await;
+    let status = active.child.wait().await;
+
+    // ssh reserves 255 for its own failures. Without this a host that is simply
+    // switched off answers with an empty listing, and the usage page reports it
+    // as a machine that did no work rather than one it could not read.
+    if status.map(|s| s.code() == Some(255)).unwrap_or(true) {
+        let detail = String::from_utf8_lossy(&err);
+        let detail = detail.trim();
+        return Err(format!(
+            "could not reach {}: {}",
+            entry.alias,
+            if detail.is_empty() { "no answer from ssh" } else { detail }
+        ));
+    }
     Ok(out)
 }
 

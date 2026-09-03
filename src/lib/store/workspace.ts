@@ -176,8 +176,15 @@ export function workspaceTitle(w: Workspace): string {
   return w.sessionFile || w.selectedSessionPath ? "untitled session" : "new session";
 }
 
+/**
+ * The last segment of a path, on either kind of machine.
+ *
+ * Splitting on "/" alone left a Windows path with no separators in it at all,
+ * so the whole of `C:\Users\me\dev\thing` came back as the project's name
+ * and every label that used it printed a full path.
+ */
 export function projectName(cwd: string): string {
-  return cwd.split("/").filter(Boolean).pop() || cwd || "no folder";
+  return cwd.split(/[/\\]/).filter(Boolean).pop() || cwd || "no folder";
 }
 
 /** Whether a path belongs to a scratch workspace root. */

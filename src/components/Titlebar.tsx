@@ -3,6 +3,7 @@ import { GitBranch, Maximize2, Minus, PanelLeft, Settings, X } from "lucide-reac
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { platform } from "@tauri-apps/plugin-os";
 import { useAppStore } from "../lib/agent-store";
+import { projectLabel } from "../lib/store/workspace";
 
 /**
  * Window chrome and live session identity.
@@ -39,7 +40,7 @@ export default function Titlebar() {
   }, []);
 
   const isMac = os === "macos";
-  const project = cwd ? (cwd.split("/").filter(Boolean).pop() ?? cwd) : "no project";
+  const project = cwd ? projectLabel(cwd) : "no project";
   const terminal = kind === "terminal";
   // A terminal has no agent to be starting, idle, or working, so it says what
   // it is instead of borrowing a state that does not apply to it.

@@ -20,6 +20,7 @@ import { createCommandsSlice, normalizeCommands } from "./store/commands-slice";
 import { createRuntimeSlice, exitVerdict, patchWorkspace } from "./store/runtime-slice";
 import { createSettingsSlice } from "./store/settings-slice";
 import { createTreeSlice } from "./store/tree-slice";
+import { projectName } from "./store/workspace";
 import { createUiSlice } from "./store/ui-slice";
 import { createUsageSlice } from "./store/usage-slice";
 import type { AppStore } from "./store/types";
@@ -166,7 +167,7 @@ export const useAppStore = create<AppStore>((set, get) => {
           if (elsewhere) {
             patch({ unread: true });
             if (get().settings.notifyOnSettle && w) {
-              void notifyTurnFinished(w.sessionName ?? w.cwd.split("/").pop() ?? "Session");
+              void notifyTurnFinished(w.sessionName ?? projectName(w.cwd) ?? "Session");
             }
           }
         }

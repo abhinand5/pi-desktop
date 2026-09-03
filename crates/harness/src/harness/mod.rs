@@ -103,10 +103,31 @@ fn agent_dir(env_key: &str, default: &str) -> PathBuf {
     }
 }
 
+/// The user's home directory.
+///
+/// `HOME` is a Unix convention and Windows does not set it, so reading only
+/// that put every agent path under `/` on Windows — which is why the app showed
+/// Unix-shaped paths there and then found nothing at them. Windows keeps the
+/// same answer in `USERPROFILE`, or in `HOMEDRIVE` + `HOMEPATH` on a domain
+/// account whose profile lives on a share.
 fn dirs_home() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"))
+    if let Some(home) = std::env::var_os("HOME").filter(|v| !v.is_empty()) {
+        return PathBuf::from(home);
+    }
+    if cfg!(windows) {
+        if let Some(profile) = std::env::var_os("USERPROFILE").filter(|v| !v.is_empty()) {
+            return PathBuf::from(profile);
+        }
+        if let (Some(drive), Some(path)) = (
+            std::env::var_os("HOMEDRIVE").filter(|v| !v.is_empty()),
+            std::env::var_os("HOMEPATH").filter(|v| !v.is_empty()),
+        ) {
+            let mut home = drive;
+            home.push(path);
+            return PathBuf::from(home);
+        }
+    }
+    PathBuf::from("/")
 }
 
 #[cfg(test)]
