@@ -30,7 +30,10 @@ export default function ThinkingStream({
   if (display === "hidden" || !text.trim()) return null;
 
   return (
-    <div className="rounded-md border border-edge/60 bg-ink-1/40">
+    // Opaque, and it has to be: the tail's left edge fades into this colour,
+    // and a translucent surface made that gradient a grey smear across the text
+    // instead of the text dissolving into its own background.
+    <div className="rounded-md border border-edge/60 bg-ink-1">
       <button
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
@@ -42,7 +45,7 @@ export default function ThinkingStream({
           <ChevronRight size={11} className="shrink-0 text-ink-faint" />
         )}
         <span
-          className={`shrink-0 font-mono text-2xs tracking-wider uppercase ${
+          className={`eyebrow shrink-0 font-mono text-2xs tracking-wider uppercase ${
             streaming ? "text-amber-dim" : "text-ink-faint"
           }`}
         >

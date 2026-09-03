@@ -107,9 +107,6 @@ export default function Transcript() {
           <EmptyTranscript />
         ) : (
           <div className="relative">
-            {/* The spine. Behind the nodes, stopping at the last one so it
-                reads as a thread rather than a border. */}
-            <div className="absolute top-2 bottom-2 left-[4px] w-px bg-line" aria-hidden />
             <div className="relative flex flex-col gap-(--spacing-entry)">
               {entries.map((entry, i) => (
                 <EntryRow
@@ -184,7 +181,7 @@ function useEntryIds(entries: Entry[]): Map<number, string> {
 
 function EntryRow({ entry, entryId, last }: { entry: Entry; entryId: string | null; last: boolean }) {
   return (
-    <div className="entry-row group">
+    <div className="entry-row group relative">
       <SpineNode entry={entry} />
       <span aria-hidden />
       <div className="min-w-0 pt-0.5">
@@ -192,7 +189,7 @@ function EntryRow({ entry, entryId, last }: { entry: Entry; entryId: string | nu
       </div>
       {/* The margin. Empty in classic, where the same figures sit under the
           message instead — see `.lane` in index.css. */}
-      <div className="lane pt-1 pl-3">
+      <div className="lane self-end pb-1 pl-4">
         <EntryMeta entry={entry} stacked />
       </div>
     </div>
@@ -234,31 +231,41 @@ function compactTokens(n: number): string {
   return `${(n / 1_000_000).toFixed(1)}M tok`;
 }
 
+/**
+ * The gutter mark: who is speaking, and what they are doing.
+ *
+ * This was a thread with a dot on it per entry, and the dots all rendered as
+ * the same hollow ring — a rail that cost sixty pixels and told you nothing,
+ * running alongside a second rail that the prompt drew for itself. One mark
+ * does both jobs now: it spans the entry it belongs to, so its *length* is the
+ * shape of the turn, and its colour says whose turn it is. The live path is the
+ * only one that gets the accent, which is the rule the whole palette is built
+ * on.
+ */
 function SpineNode({ entry }: { entry: Entry }) {
-  const dot = "relative z-10 mt-[7px] h-[9px] w-[9px] shrink-0 rounded-full border bg-ink-0";
+  const bar = "w-full rounded-full";
   switch (entry.kind) {
     case "user":
-      return <div className={`${dot} border-amber bg-amber`} />;
+      return <div className={`${bar} bg-amber`} aria-hidden />;
     case "assistant":
-      if (entry.streaming) return <div className={`${dot} spine-running border-amber`} />;
-      if (entry.stopReason === "error") return <div className={`${dot} border-red bg-red/70`} />;
-      return <div className={`${dot} border-amber-dim`} />;
+      if (entry.streaming) return <div className={`${bar} spine-running bg-amber`} aria-hidden />;
+      if (entry.stopReason === "error") return <div className={`${bar} bg-red`} aria-hidden />;
+      return <div className={`${bar} bg-line-strong`} aria-hidden />;
     case "tool":
       return (
         <div
-          className={`${dot} ${
+          className={`${bar} ${
             entry.status === "running"
-              ? "spine-running border-teal bg-teal/80"
+              ? "spine-running bg-teal"
               : entry.status === "error"
-                ? "border-red bg-red/70"
-                : "border-teal bg-teal/60"
+                ? "bg-red"
+                : "bg-teal/50"
           }`}
+          aria-hidden
         />
       );
     default:
-      return (
-        <div className="relative z-10 mt-[9px] h-[6px] w-[6px] shrink-0 rotate-45 bg-ink-faint ring-2 ring-ink-0" />
-      );
+      return <div className={`${bar} bg-ink-3`} aria-hidden />;
   }
 }
 
@@ -291,7 +298,7 @@ function EntryBody({ entry, entryId, last }: { entry: Entry; entryId: string | n
               hovered nor branched costs no vertical space. */}
           {/* The chip leads: it is always visible, so the hover-only actions
               must not shift it sideways by reserving width ahead of it. */}
-          <div className="mt-1 flex min-h-[24px] items-center gap-2">
+          <div className="entry-actions flex items-center gap-2">
             {entryId ? <BranchChip entryId={entryId} /> : null}
             <UserMessageActions text={entry.text} entryId={entryId} />
           </div>

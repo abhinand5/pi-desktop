@@ -616,7 +616,20 @@ input:focus-visible {
    ───────────────────────────────────────────────────────────────────────── */
 .entry-row {
   display: grid;
-  grid-template-columns: auto 12px minmax(0, 1fr) var(--spacing-lane);
+  grid-template-columns: 3px 14px minmax(0, 1fr) var(--spacing-lane);
+}
+
+/* The row of things you can do to a message: copy it, edit it, branch from it.
+   They used to reserve 26px under every entry — a third of the height of a
+   short prompt — to hold buttons that are invisible until the pointer is over
+   them. They live in the gap between entries now, which was already there. A
+   branch chip is not hover-only and still shows, hanging under the message it
+   belongs to, which is where it was pointing anyway. */
+.entry-actions {
+  position: absolute;
+  bottom: calc(var(--spacing-entry) * -1 + 4px);
+  left: 0;
+  height: 20px;
 }
 
 /* Per-message cost, tokens and timing go in the margin beside the message.
@@ -632,14 +645,14 @@ input:focus-visible {
 /* Foundry's prompt: a rule and a weight rather than a filled block. The fill
    made your words look like another of the agent's cards; the rule says "this
    one is yours" without spending a surface on it. */
-/* Your words: a rule and a weight rather than a filled block. A fill made them
-   look like another of the agent's cards. */
+/* Your words: a weight, and nothing else. A fill made them look like another of
+   the agent's cards, and a rule of their own duplicated the gutter mark two
+   centimetres to the left of it. */
 .prompt-block {
   background: transparent;
-  border-left: 2px solid var(--color-amber-dim);
   border-radius: 0;
-  padding-left: 12px;
-  font-weight: 450;
+  padding-left: 0;
+  font-weight: 500;
 }
 
 /* A small label naming the section or state that follows it.
@@ -726,14 +739,14 @@ input:focus-visible {
   background: transparent;
 }
 
-/* A tool call in flight. */
+/* Work in flight. A ring made sense around a dot; a bar says it by breathing. */
 @keyframes spine-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-teal) 45%, transparent);
+    opacity: 1;
   }
   50% {
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-teal) 12%, transparent);
+    opacity: 0.35;
   }
 }
 .spine-running {
