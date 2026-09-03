@@ -85,19 +85,21 @@ export default function SettingsPage() {
 
         <Group title="Appearance">
           <div className="px-4 py-3">
-            <div className="text-md text-ink-text">Look</div>
+            <div className="text-md text-ink-text">Palette</div>
             <div className="mt-0.5 mb-2.5 text-sm text-ink-faint">
-              Classic outlines every block and keeps the app compact. Foundry lets type and
-              spacing do that work: a reading-sized transcript, its cost and timing in a margin
-              beside it, and state changes you can see happen.
+              Mostly ports of schemes you already know, at their published values. Whatever a
+              palette spends on its accent is what marks the live path here.
             </div>
-            {(["classic", "foundry"] as const).map((skin) => (
-              <div key={skin} className="mb-3 last:mb-0">
-                <div className="mb-1.5 text-sm text-ink-dim">
-                  {skin === "classic" ? "Classic" : "Foundry"}
-                </div>
+            {(
+              [
+                ["Dark", false],
+                ["Light", true],
+              ] as const
+            ).map(([heading, light]) => (
+              <div key={heading} className="mb-3 last:mb-0">
+                <div className="mb-1.5 text-sm text-ink-dim">{heading}</div>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {THEMES.filter((t) => t.skin === skin).map((t) => (
+                  {THEMES.filter((t) => t.light === light).map((t) => (
                     <button
                       key={t.id}
                       onClick={() => setSetting("theme", t.id)}

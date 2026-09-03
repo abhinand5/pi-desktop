@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createSettingsSlice } from "./settings-slice";
-import type { AppStore } from "./types";
+import { THEMES, type AppStore } from "./types";
 
 const SETTINGS_KEY = "pi-desktop.settings";
 
@@ -64,11 +64,11 @@ describe("appearance", () => {
 
     // The default palette carries an attribute of its own so the settings page
     // can paint a swatch in it while another theme is active.
-    expect(document.documentElement.getAttribute("data-theme")).toBe("phosphor");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("foundry");
     expect(document.documentElement.getAttribute("data-appearance")).toBe("dark");
 
-    slice.setSetting("theme", "paper");
-    expect(document.documentElement.getAttribute("data-theme")).toBe("paper");
+    slice.setSetting("theme", "latte");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("latte");
     expect(document.documentElement.getAttribute("data-appearance")).toBe("light");
 
     slice.setSetting("glass", true);
@@ -77,25 +77,27 @@ describe("appearance", () => {
     expect(document.documentElement.hasAttribute("data-glass")).toBe(false);
   });
 
-  it("carries the skin with the look, and leaves classic unmarked", () => {
-    // The whole promise of the second skin is that the first one does not
-    // change. Every Foundry rule is scoped to `[data-skin="foundry"]`, so a
-    // classic look must never carry the attribute — if it did, the new
-    // structure would apply to the old palette.
+  it("falls back to the default when the stored palette no longer exists", () => {
+    // Palettes come and go. A stored id with no block behind it would leave
+    // every colour falling through to the compiled defaults — readable, but
+    // nobody's choice.
+    window.localStorage.setItem(
+      "pi-desktop.settings",
+      JSON.stringify({ theme: "a-palette-that-was-removed" }),
+    );
+    makeSlice();
+
+    expect(document.documentElement.getAttribute("data-theme")).toBe("foundry");
+  });
+
+  it("marks every palette light or dark, since the syntax colours read it", () => {
     const { slice } = makeSlice();
-    expect(document.documentElement.hasAttribute("data-skin")).toBe(false);
-
-    slice.setSetting("theme", "foundry-night");
-    expect(document.documentElement.getAttribute("data-skin")).toBe("foundry");
-    expect(document.documentElement.getAttribute("data-appearance")).toBe("dark");
-
-    slice.setSetting("theme", "foundry-day");
-    expect(document.documentElement.getAttribute("data-skin")).toBe("foundry");
-    expect(document.documentElement.getAttribute("data-appearance")).toBe("light");
-
-    for (const classic of ["phosphor", "ember", "nocturne", "moss", "mono", "paper"] as const) {
-      slice.setSetting("theme", classic);
-      expect(document.documentElement.hasAttribute("data-skin")).toBe(false);
+    for (const theme of THEMES) {
+      slice.setSetting("theme", theme.id);
+      expect(document.documentElement.getAttribute("data-theme")).toBe(theme.id);
+      expect(document.documentElement.getAttribute("data-appearance")).toBe(
+        theme.light ? "light" : "dark",
+      );
     }
   });
 

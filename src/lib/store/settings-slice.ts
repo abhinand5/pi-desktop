@@ -37,15 +37,12 @@ function persist(settings: Settings) {
 export function applyAppearance(settings: Settings) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  root.setAttribute("data-theme", settings.theme);
-  const chosen = THEMES.find((t) => t.id === settings.theme);
-  // The skin is the structural half of a look — borders, type scale, spacing,
-  // motion — and it travels with the palette rather than being a second thing
-  // to set. Absent for the default, so `[data-skin]` styles cannot leak into a
-  // document that has not chosen one.
-  const skin = chosen?.skin ?? "classic";
-  if (skin === "classic") root.removeAttribute("data-skin");
-  else root.setAttribute("data-skin", skin);
+  // A palette that has since been removed would otherwise leave the attribute
+  // pointing at a block that no longer exists, and every colour would fall
+  // through to the compiled defaults — readable, but not what anyone chose.
+  const theme = THEMES.some((t) => t.id === settings.theme) ? settings.theme : defaultSettings.theme;
+  root.setAttribute("data-theme", theme);
+  const chosen = THEMES.find((t) => t.id === theme);
   // Syntax highlighting carries both light and dark token colours at once and
   // reads this to pick, so it follows a theme change with no re-highlighting.
   const light = chosen?.light ?? false;

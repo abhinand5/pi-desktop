@@ -18,32 +18,38 @@
    ───────────────────────────────────────────────────────────────────────── */
 
 @theme {
-  /* Surfaces: cool blue-black, four steps of elevation. */
-  --color-ink-0: #0e1116;
-  --color-ink-1: #141920;
-  --color-ink-2: #1b2129;
-  --color-ink-3: #222a34;
-  --color-line: #232b35;
+  /* The default palette, which is also what every utility compiles against.
+     Tailwind needs real values here to generate the classes at all; the palette
+     actually in force comes from `[data-theme]`, which is always set. */
+
+  /* Surfaces: cool slate, four steps of elevation. On a light palette the
+     ladder inverts — see the palettes below. */
+  --color-ink-0: #101317;
+  --color-ink-1: #171b21;
+  --color-ink-2: #1e232b;
+  --color-ink-3: #283039;
+  --color-line: #242a32;
   /* A brighter rule for the edges that must read as edges (focus, active). */
-  --color-line-strong: #33404e;
+  --color-line-strong: #38414d;
 
-  /* Text: warm greys, three weights of emphasis. */
-  --color-ink-text: #d9dde2;
-  --color-ink-dim: #8a93a0;
-  --color-ink-faint: #5b6470;
+  /* Text: three weights of emphasis. */
+  --color-ink-text: #e7e9ec;
+  --color-ink-dim: #9aa2ad;
+  --color-ink-faint: #6b737e;
 
-  /* The accent. Named for the default palette, but it is a *role* — the live
-     path — and each theme spends its own colour on it. */
-  --color-amber: #e8a33d;
-  --color-amber-dim: #a9762c;
+  /* The accent. Still named for the palette this app started with, and still a
+     *role* rather than a hue — whatever a palette spends here is what marks the
+     live path. Renaming it across seventeen palettes would buy nothing. */
+  --color-amber: #4fbca9;
+  --color-amber-dim: #2f7b6f;
   /* Text and icons that sit on top of an accent fill. Not `ink-0`: that is the
-     app's backdrop, and it is only dark by coincidence of the default theme. */
-  --color-on-accent: #0e1116;
+     app's backdrop, and it is only dark by coincidence of the default palette. */
+  --color-on-accent: #08110f;
 
   /* Semantics. */
-  --color-teal: #6fb3c0;
-  --color-green: #7fb685;
-  --color-red: #e06c5f;
+  --color-teal: #7aa7d8;
+  --color-green: #6fbf8e;
+  --color-red: #de7266;
 
   --font-sans: "Inter Variable", "SF Pro Text", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
@@ -68,29 +74,29 @@
   --text-2xs--line-height: 1.4;
   --text-xs: 11px;
   --text-xs--line-height: 1.45;
-  --text-sm: 12px;
+  --text-sm: 12.5px;
   --text-sm--line-height: 1.5;
-  --text-base: 13px;
+  --text-base: 13.5px;
   --text-base--line-height: 1.55;
-  --text-md: 14px;
-  --text-md--line-height: 1.65;
-  --text-ml: 15.5px;
+  --text-md: 15px;
+  --text-md--line-height: 1.7;
+  --text-ml: 17px;
   --text-ml--line-height: 1.45;
-  --text-lg: 17px;
-  --text-lg--line-height: 1.35;
-  --text-xl: 21px;
+  --text-lg: 19px;
+  --text-lg--line-height: 1.3;
+  --text-xl: 24px;
   --text-xl--line-height: 1.25;
-  --text-2xl: 28px;
+  --text-2xl: 32px;
   --text-2xl--line-height: 1.1;
 
   /* Three radii. Small for controls, medium for cards, large for overlays. */
-  --radius-sm: 5px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
 
   /* Control heights, so every button in a row lines up without guessing. */
-  --spacing-control: 28px;
-  --spacing-control-sm: 24px;
+  --spacing-control: 30px;
+  --spacing-control-sm: 26px;
 
   /* ── Structural tokens ───────────────────────────────────────────────────
      A palette is not a design. These are the decisions a *skin* makes that a
@@ -100,28 +106,27 @@
      skin is a second set of values rather than a second set of components.
      ───────────────────────────────────────────────────────────────────────── */
 
-  /* The edge of a block. Classic draws every block as a card, so this is the
-     card's line; a skin that separates with air sets it to transparent and
-     nothing else has to know. */
-  --color-edge: var(--color-line);
+  /* The edge of a block. Transparent, because blocks separate by surface and
+     air here rather than by outline — a transcript where the prompt, the
+     reply, the tool call and the code listing all wear the same 1px rectangle
+     gives the eye nothing to grab. The few places that divide two real things,
+     a panel from the page, keep `line`. */
+  --color-edge: transparent;
   /* The surface a block sits on, which is not always the surface behind it. */
   --color-block: var(--color-ink-1);
 
-  /* The transcript's margin column: where per-message cost, tokens and time
-     go when there is room for them beside the text instead of under it.
-     Zero in classic, which puts them under the message. */
-  --spacing-lane: 0px;
-  /* Air between one entry and the next. 16px is what `space-y-4` was, which is
-     what the transcript used before this became a token — classic must not
-     shift by a pixel for having been made configurable. */
-  --spacing-entry: 16px;
-  /* Air inside a block. */
-  --spacing-block: 10px;
+  /* The transcript's margin: where per-message cost, tokens and time sit, in a
+     column you can read down, instead of a dot-joined string interrupting the
+     line of the conversation. */
+  --spacing-lane: 84px;
+  /* Air between one entry and the next, and inside a block. */
+  --spacing-entry: 26px;
+  --spacing-block: 12px;
 
-  /* How long a state change takes to become visible. Zero means instant,
-     which is what classic has always been. */
-  --motion-fast: 0ms;
-  --motion-base: 0ms;
+  /* How long a state change takes to become visible. Enough to see it happen,
+     not enough to wait for it. */
+  --motion-fast: 110ms;
+  --motion-base: 190ms;
 }
 
 /* ─── Themes ───────────────────────────────────────────────────────────────
@@ -139,10 +144,45 @@
   --shadow-overlay: 0 18px 40px -12px rgb(0 0 0 / 0.7);
 }
 
-/* The default palette, repeated from `@theme` above. Tailwind needs the values
-   there to generate the utilities at all, and the settings page needs them
-   behind an attribute so a phosphor swatch can render itself in phosphor while
-   some other theme is active. */
+/* ─── Palettes ─────────────────────────────────────────────────────────────
+   Every surface, text weight and accent resolves through the custom properties
+   above, so a palette is a list of overrides and nothing else — no component
+   knows one exists.
+
+   Most of these are not ours. They are the schemes developers have already
+   spent years staring at and refining, ported here at their published values
+   rather than approximated: a palette that thousands of people read code in
+   every day has been tested in a way a fresh one has not.
+
+   Two rules hold across all of them. The accent names a job, not a hue —
+   whatever a scheme spends on `--color-amber` is what marks the live path here.
+   And on a light ground the elevation ladder inverts: a raised surface is
+   *darker* than the page, which is the thing most light themes get wrong.
+
+   `--shadow-overlay` travels with the palette because a shadow tuned for a
+   near-black ground reads as a smudge on a pale one.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* The house palette. Jade for work in flight, on a cool slate. */
+[data-theme="foundry"] {
+  --color-ink-0: #101317;
+  --color-ink-1: #171b21;
+  --color-ink-2: #1e232b;
+  --color-ink-3: #283039;
+  --color-line: #242a32;
+  --color-line-strong: #38414d;
+  --color-ink-text: #e7e9ec;
+  --color-ink-dim: #9aa2ad;
+  --color-ink-faint: #6b737e;
+  --color-amber: #4fbca9;
+  --color-amber-dim: #2f7b6f;
+  --color-on-accent: #08110f;
+  --color-teal: #7aa7d8;
+  --color-green: #6fbf8e;
+  --color-red: #de7266;
+}
+
+/* The original: amber phosphor on graphite. */
 [data-theme="phosphor"] {
   --color-ink-0: #0e1116;
   --color-ink-1: #141920;
@@ -161,187 +201,199 @@
   --color-red: #e06c5f;
 }
 
-/* Warm charcoal, ember orange. */
-[data-theme="ember"] {
-  --color-ink-0: #14100e;
-  --color-ink-1: #1b1613;
-  --color-ink-2: #241d19;
-  --color-ink-3: #2e2621;
-  --color-line: #2f2621;
-  --color-line-strong: #453931;
-  --color-ink-text: #e4dcd4;
-  --color-ink-dim: #9a8d82;
-  --color-ink-faint: #6b6058;
-  --color-amber: #ef8354;
-  --color-amber-dim: #a85c3a;
-  --color-on-accent: #14100e;
-  --color-teal: #7aa9a3;
-  --color-green: #93b072;
-  --color-red: #d9615a;
+/* Tokyo Night — Enkia. */
+[data-theme="tokyo-night"] {
+  --color-ink-0: #1a1b26;
+  --color-ink-1: #1f2335;
+  --color-ink-2: #24283b;
+  --color-ink-3: #292e42;
+  --color-line: #292e42;
+  --color-line-strong: #3b4261;
+  --color-ink-text: #c0caf5;
+  --color-ink-dim: #9aa5ce;
+  --color-ink-faint: #565f89;
+  --color-amber: #7aa2f7;
+  --color-amber-dim: #3d59a1;
+  --color-on-accent: #1a1b26;
+  --color-teal: #7dcfff;
+  --color-green: #9ece6a;
+  --color-red: #f7768e;
 }
 
-/* Deep indigo, periwinkle. */
-[data-theme="nocturne"] {
-  --color-ink-0: #0d0f1a;
-  --color-ink-1: #131725;
-  --color-ink-2: #1a1f30;
-  --color-ink-3: #232941;
-  --color-line: #232941;
-  --color-line-strong: #384061;
-  --color-ink-text: #dcdcf0;
-  --color-ink-dim: #8b90b4;
-  --color-ink-faint: #5c6186;
-  --color-amber: #9d8cff;
-  --color-amber-dim: #6a5cc4;
-  --color-on-accent: #0d0f1a;
-  --color-teal: #63b6d6;
-  --color-green: #74c69d;
-  --color-red: #e4707f;
+/* Catppuccin Mocha. */
+[data-theme="mocha"] {
+  --color-ink-0: #181825;
+  --color-ink-1: #1e1e2e;
+  --color-ink-2: #313244;
+  --color-ink-3: #45475a;
+  --color-line: #313244;
+  --color-line-strong: #585b70;
+  --color-ink-text: #cdd6f4;
+  --color-ink-dim: #a6adc8;
+  --color-ink-faint: #6c7086;
+  --color-amber: #cba6f7;
+  --color-amber-dim: #7f5fbf;
+  --color-on-accent: #181825;
+  --color-teal: #94e2d5;
+  --color-green: #a6e3a1;
+  --color-red: #f38ba8;
 }
 
-/* Green-grey, warm lime. */
-[data-theme="moss"] {
-  --color-ink-0: #0f1311;
-  --color-ink-1: #151b18;
-  --color-ink-2: #1c2420;
-  --color-ink-3: #242e29;
-  --color-line: #253029;
-  --color-line-strong: #37463d;
-  --color-ink-text: #d7ded8;
-  --color-ink-dim: #8a9791;
-  --color-ink-faint: #5c6862;
-  --color-amber: #b8c96a;
-  --color-amber-dim: #7f8c47;
-  --color-on-accent: #0f1311;
-  --color-teal: #6cb3ac;
-  --color-green: #8ec07c;
-  --color-red: #d97d6d;
+/* Nord — Arctic Ice Studio. */
+[data-theme="nord"] {
+  --color-ink-0: #2e3440;
+  --color-ink-1: #333a47;
+  --color-ink-2: #3b4252;
+  --color-ink-3: #434c5e;
+  --color-line: #3b4252;
+  --color-line-strong: #4c566a;
+  --color-ink-text: #eceff4;
+  --color-ink-dim: #d8dee9;
+  --color-ink-faint: #7b88a1;
+  --color-amber: #88c0d0;
+  --color-amber-dim: #5e81ac;
+  --color-on-accent: #2e3440;
+  --color-teal: #8fbcbb;
+  --color-green: #a3be8c;
+  --color-red: #bf616a;
 }
 
-/* Neutral graphite, cool cyan — the quietest of the set. */
-[data-theme="mono"] {
-  --color-ink-0: #101011;
-  --color-ink-1: #17181a;
-  --color-ink-2: #1f2023;
-  --color-ink-3: #292b2e;
-  --color-line: #292b2e;
-  --color-line-strong: #3d4045;
-  --color-ink-text: #dcdcde;
-  --color-ink-dim: #90929a;
-  --color-ink-faint: #626469;
-  --color-amber: #9fd0d8;
-  --color-amber-dim: #6a949c;
-  --color-on-accent: #101011;
-  --color-teal: #a3a7b0;
-  --color-green: #94b39a;
-  --color-red: #cf8079;
+/* Gruvbox Dark — Pavel Pertsev. */
+[data-theme="gruvbox"] {
+  --color-ink-0: #1d2021;
+  --color-ink-1: #282828;
+  --color-ink-2: #3c3836;
+  --color-ink-3: #504945;
+  --color-line: #3c3836;
+  --color-line-strong: #665c54;
+  --color-ink-text: #ebdbb2;
+  --color-ink-dim: #bdae93;
+  --color-ink-faint: #928374;
+  --color-amber: #fabd2f;
+  --color-amber-dim: #d79921;
+  --color-on-accent: #1d2021;
+  --color-teal: #8ec07c;
+  --color-green: #b8bb26;
+  --color-red: #fb4934;
 }
 
-/* The one light palette. Warm, so the amber still reads as amber. */
-[data-theme="paper"] {
-  --color-ink-0: #f5f1e9;
-  --color-ink-1: #fffdf9;
-  --color-ink-2: #ece6da;
-  --color-ink-3: #e0d8c8;
-  --color-line: #ded6c6;
-  --color-line-strong: #b3a794;
-  --color-ink-text: #2c2a26;
-  --color-ink-dim: #6b675f;
-  --color-ink-faint: #928d83;
-  --color-amber: #b06f16;
-  --color-amber-dim: #8a5610;
-  --color-on-accent: #fffdf8;
-  --color-teal: #2b7f91;
-  --color-green: #4b7f52;
-  --color-red: #b8453a;
-  --shadow-overlay: 0 12px 30px -10px rgb(90 80 60 / 0.28);
+/* Rosé Pine. */
+[data-theme="rose-pine"] {
+  --color-ink-0: #191724;
+  --color-ink-1: #1f1d2e;
+  --color-ink-2: #26233a;
+  --color-ink-3: #403d52;
+  --color-line: #26233a;
+  --color-line-strong: #524f67;
+  --color-ink-text: #e0def4;
+  --color-ink-dim: #908caa;
+  --color-ink-faint: #6e6a86;
+  --color-amber: #ebbcba;
+  --color-amber-dim: #b08b89;
+  --color-on-accent: #191724;
+  --color-teal: #9ccfd8;
+  --color-green: #5cb8a0;
+  --color-red: #eb6f92;
 }
 
-/* ─── Foundry ──────────────────────────────────────────────────────────────
-   The second skin.
-
-   A theme changes what colour the app is. A skin changes how it is built: what
-   separates one block from the next, how much air there is, how big the reading
-   text is, and whether a state change is visible as it happens. Every value
-   below is a token the components already read, so this whole block is the
-   skin — no component asks which one is on.
-
-   The idea it is built around: borders stop doing the structural work and
-   typography and alignment take it over. Classic draws every entry in the
-   transcript as a bordered card, which flattens a prompt, a reply, a tool call
-   and a code listing into the same object. Here the card's line goes
-   transparent, the surfaces do the separating, and the space that the borders
-   were spending goes to the reading column and to a margin beside it.
-   ───────────────────────────────────────────────────────────────────────── */
-[data-skin="foundry"] {
-  /* Blocks separate by surface and air, not by outline. The few places that
-     genuinely divide two things — a panel from the page — keep `line`. */
-  --color-edge: transparent;
-
-  /* Softer than classic's, and stepped: a control, a card and a floating panel
-     should not share one corner. */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-
-  /* Prose gets a reading size and the leading to go with it. The scale keeps
-     its shape — every step still sits where it sat relative to the others —
-     but the whole thing moves up, because 13px was sized for chrome and the
-     transcript was borrowing it. */
-  --text-sm: 12.5px;
-  --text-base: 13.5px;
-  --text-md: 15px;
-  --text-md--line-height: 1.7;
-  --text-ml: 17px;
-  --text-lg: 19px;
-  --text-lg--line-height: 1.3;
-  --text-xl: 24px;
-  --text-2xl: 32px;
-
-  /* Where per-message cost, tokens and timing go: beside the message, in a
-     column you can read down, instead of a dot-joined string interrupting the
-     line of the conversation. */
-  --spacing-lane: 84px;
-  --spacing-entry: 26px;
-  --spacing-block: 12px;
-
-  --spacing-control: 30px;
-  --spacing-control-sm: 26px;
-
-  /* Enough to see a change happen, not enough to wait for it. */
-  --motion-fast: 110ms;
-  --motion-base: 190ms;
+/* Everforest Dark — sainnhe. */
+[data-theme="everforest"] {
+  --color-ink-0: #272e33;
+  --color-ink-1: #2d353b;
+  --color-ink-2: #343f44;
+  --color-ink-3: #3d484d;
+  --color-line: #3d484d;
+  --color-line-strong: #475258;
+  --color-ink-text: #d3c6aa;
+  --color-ink-dim: #9da9a0;
+  --color-ink-faint: #859289;
+  --color-amber: #dbbc7f;
+  --color-amber-dim: #a08b56;
+  --color-on-accent: #272e33;
+  --color-teal: #7fbbb3;
+  --color-green: #a7c080;
+  --color-red: #e67e80;
 }
 
-/* Cool near-neutral rather than a tinted black, with two signals that mean
-   different things: jade is work in flight, ochre is what it costs. */
-[data-theme="foundry-night"] {
-  --color-ink-0: #101317;
-  --color-ink-1: #171b21;
-  --color-ink-2: #1e232b;
-  --color-ink-3: #283039;
-  --color-line: #242a32;
-  --color-line-strong: #38414d;
-  --color-ink-text: #e7e9ec;
-  --color-ink-dim: #9aa2ad;
-  --color-ink-faint: #6b737e;
-  --color-amber: #4fbca9;
-  --color-amber-dim: #2f7b6f;
-  --color-on-accent: #08110f;
-  --color-teal: #7aa7d8;
-  --color-green: #6fbf8e;
-  --color-red: #de7266;
-  --shadow-overlay: 0 20px 44px -14px rgb(0 0 0 / 0.72);
+/* One Dark — Atom. */
+[data-theme="one-dark"] {
+  --color-ink-0: #21252b;
+  --color-ink-1: #282c34;
+  --color-ink-2: #2c313a;
+  --color-ink-3: #3e4451;
+  --color-line: #3e4451;
+  --color-line-strong: #4b5263;
+  --color-ink-text: #abb2bf;
+  --color-ink-dim: #9198a1;
+  --color-ink-faint: #5c6370;
+  --color-amber: #61afef;
+  --color-amber-dim: #3f7fb0;
+  --color-on-accent: #21252b;
+  --color-teal: #56b6c2;
+  --color-green: #98c379;
+  --color-red: #e06c75;
 }
 
-/* The same design in daylight. Not the warm cream every light theme reaches
-   for — a cool near-white, so the jade stays a signal rather than turning
-   olive against a yellow ground.
+/* Dracula — Zeno Rocha. */
+[data-theme="dracula"] {
+  --color-ink-0: #21222c;
+  --color-ink-1: #282a36;
+  --color-ink-2: #343746;
+  --color-ink-3: #44475a;
+  --color-line: #44475a;
+  --color-line-strong: #6272a4;
+  --color-ink-text: #f8f8f2;
+  --color-ink-dim: #bfc7d5;
+  --color-ink-faint: #6272a4;
+  --color-amber: #bd93f9;
+  --color-amber-dim: #7d5bbe;
+  --color-on-accent: #21222c;
+  --color-teal: #8be9fd;
+  --color-green: #50fa7b;
+  --color-red: #ff5555;
+}
 
-   The elevation ladder inverts here, and it has to: on a dark ground a raised
-   surface is lighter, on a light ground it is darker. Carrying the dark
-   ordering over is what makes most light themes look washed out — the rail
-   ends up a shade off the page it is supposed to sit beside. */
+/* Kanagawa Wave — rebelot. */
+[data-theme="kanagawa"] {
+  --color-ink-0: #1f1f28;
+  --color-ink-1: #2a2a37;
+  --color-ink-2: #363646;
+  --color-ink-3: #45455a;
+  --color-line: #363646;
+  --color-line-strong: #54546d;
+  --color-ink-text: #dcd7ba;
+  --color-ink-dim: #a9a597;
+  --color-ink-faint: #727169;
+  --color-amber: #e6c384;
+  --color-amber-dim: #a68a5b;
+  --color-on-accent: #1f1f28;
+  --color-teal: #7aa89f;
+  --color-green: #98bb6c;
+  --color-red: #e46876;
+}
+
+/* Solarized Dark — Ethan Schoonover. */
+[data-theme="solarized"] {
+  --color-ink-0: #002b36;
+  --color-ink-1: #073642;
+  --color-ink-2: #0d4451;
+  --color-ink-3: #14505e;
+  --color-line: #0f4956;
+  --color-line-strong: #586e75;
+  --color-ink-text: #93a1a1;
+  --color-ink-dim: #839496;
+  --color-ink-faint: #657b83;
+  --color-amber: #b58900;
+  --color-amber-dim: #86680a;
+  --color-on-accent: #002b36;
+  --color-teal: #2aa198;
+  --color-green: #859900;
+  --color-red: #dc322f;
+}
+
+/* ── Light. The ladder inverts: a raised surface is darker than the page. ── */
+
+/* The house palette in daylight. */
 [data-theme="foundry-day"] {
   --color-ink-0: #ffffff;
   --color-ink-1: #f3f5f8;
@@ -361,35 +413,84 @@
   --shadow-overlay: 0 14px 34px -12px rgb(20 30 50 / 0.18);
 }
 
-/* Motion, and only where something changed on its own or under your hand.
-   Scoped to the skin so classic stays as instant as it has always been, and
-   written against the tokens so `prefers-reduced-motion` can zero them in one
-   place rather than chasing every rule. */
-[data-skin="foundry"] button,
-[data-skin="foundry"] a,
-[data-skin="foundry"] [role="menuitem"],
-[data-skin="foundry"] [data-row] {
-  transition:
-    background-color var(--motion-fast) ease,
-    border-color var(--motion-fast) ease,
-    color var(--motion-fast) ease,
-    opacity var(--motion-fast) ease;
+/* Catppuccin Latte. */
+[data-theme="latte"] {
+  --color-ink-0: #eff1f5;
+  --color-ink-1: #e6e9ef;
+  --color-ink-2: #dce0e8;
+  --color-ink-3: #ccd0da;
+  --color-line: #dce0e8;
+  --color-line-strong: #acb0be;
+  --color-ink-text: #4c4f69;
+  --color-ink-dim: #6c6f85;
+  --color-ink-faint: #9ca0b0;
+  --color-amber: #8839ef;
+  --color-amber-dim: #6a25c4;
+  --color-on-accent: #eff1f5;
+  --color-teal: #179299;
+  --color-green: #40a02b;
+  --color-red: #d20f39;
+  --shadow-overlay: 0 14px 34px -12px rgb(76 79 105 / 0.2);
 }
 
-/* A turn finishing is the one moment worth an orchestrated animation: it is
-   the thing you came back to the window for. */
-@keyframes settle-in {
-  from {
-    opacity: 0;
-    transform: translateY(3px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+/* Solarized Light — Ethan Schoonover. */
+[data-theme="solarized-light"] {
+  --color-ink-0: #fdf6e3;
+  --color-ink-1: #f4ecd8;
+  --color-ink-2: #eee8d5;
+  --color-ink-3: #ddd6c1;
+  --color-line: #e6dfc8;
+  --color-line-strong: #93a1a1;
+  --color-ink-text: #073642;
+  --color-ink-dim: #657b83;
+  --color-ink-faint: #93a1a1;
+  --color-amber: #b58900;
+  --color-amber-dim: #8a6800;
+  --color-on-accent: #fdf6e3;
+  --color-teal: #2aa198;
+  --color-green: #859900;
+  --color-red: #dc322f;
+  --shadow-overlay: 0 14px 34px -12px rgb(88 110 117 / 0.22);
 }
-[data-skin="foundry"] .settles {
-  animation: settle-in var(--motion-base) cubic-bezier(0.2, 0.7, 0.3, 1) both;
+
+/* Rosé Pine Dawn. */
+[data-theme="rose-pine-dawn"] {
+  --color-ink-0: #faf4ed;
+  --color-ink-1: #f2e9e1;
+  --color-ink-2: #ebe0d8;
+  --color-ink-3: #dfdad9;
+  --color-line: #e5ded6;
+  --color-line-strong: #cecacd;
+  --color-ink-text: #575279;
+  --color-ink-dim: #797593;
+  --color-ink-faint: #9893a5;
+  --color-amber: #d7827e;
+  --color-amber-dim: #b4637a;
+  --color-on-accent: #faf4ed;
+  --color-teal: #56949f;
+  --color-green: #618774;
+  --color-red: #b4637a;
+  --shadow-overlay: 0 14px 34px -12px rgb(87 82 121 / 0.18);
+}
+
+/* Gruvbox Light — Pavel Pertsev. */
+[data-theme="gruvbox-light"] {
+  --color-ink-0: #fbf1c7;
+  --color-ink-1: #f2e5bc;
+  --color-ink-2: #ebdbb2;
+  --color-ink-3: #d5c4a1;
+  --color-line: #e6d5a8;
+  --color-line-strong: #bdae93;
+  --color-ink-text: #3c3836;
+  --color-ink-dim: #665c54;
+  --color-ink-faint: #7c6f64;
+  --color-amber: #b57614;
+  --color-amber-dim: #8f5c0f;
+  --color-on-accent: #fbf1c7;
+  --color-teal: #427b58;
+  --color-green: #79740e;
+  --color-red: #9d0006;
+  --shadow-overlay: 0 14px 34px -12px rgb(80 73 69 / 0.22);
 }
 
 html,
@@ -518,27 +619,22 @@ input:focus-visible {
   grid-template-columns: auto 12px minmax(0, 1fr) var(--spacing-lane);
 }
 
-/* Per-message cost, tokens and timing. Exactly one of these is ever visible:
-   under the message where there is no margin to put it in, beside it where
-   there is. Both are always rendered — which of them shows is the skin's
-   decision, not the component's. */
+/* Per-message cost, tokens and timing go in the margin beside the message.
+   The inline copy under the message is still rendered and still hidden: it is
+   what the narrow layout falls back to, below. */
 .lane {
-  display: none;
-}
-.meta-inline {
-  display: flex;
-}
-[data-skin="foundry"] .lane {
   display: block;
 }
-[data-skin="foundry"] .meta-inline {
+.meta-inline {
   display: none;
 }
 
 /* Foundry's prompt: a rule and a weight rather than a filled block. The fill
    made your words look like another of the agent's cards; the rule says "this
    one is yours" without spending a surface on it. */
-[data-skin="foundry"] .prompt-block {
+/* Your words: a rule and a weight rather than a filled block. A fill made them
+   look like another of the agent's cards. */
+.prompt-block {
   background: transparent;
   border-left: 2px solid var(--color-amber-dim);
   border-radius: 0;
@@ -550,7 +646,7 @@ input:focus-visible {
    Classic sets these tracked-out and uppercase; Foundry does not, because an
    interface where every label shouts has no way left to raise its voice. The
    class exists so that is one decision in one place rather than eleven. */
-[data-skin="foundry"] .eyebrow {
+.eyebrow {
   text-transform: none;
   letter-spacing: 0.01em;
   font-family: var(--font-sans);
@@ -559,7 +655,7 @@ input:focus-visible {
 /* A code listing needs a surface once it no longer has an outline. Classic
    sinks it to the page ground and draws a line around it; here the ground is
    the page, so the block has to rise instead. */
-[data-skin="foundry"] .code-block {
+.code-block {
   background: var(--color-ink-2);
 }
 
@@ -567,9 +663,6 @@ input:focus-visible {
    Classic's rows are one line tall and stay that way; a status line there would
    cost a third of the rail's height for something it has never shown. */
 .row-status {
-  display: none;
-}
-[data-skin="foundry"] .row-status {
   display: flex;
 }
 
@@ -585,11 +678,26 @@ input:focus-visible {
   --spacing-control: 26px;
   --spacing-control-sm: 22px;
 }
-[data-density="compact"][data-skin="foundry"] {
+[data-density="compact"]{
   --spacing-entry: 18px;
   --spacing-block: 9px;
   --spacing-control: 28px;
   --spacing-control-sm: 24px;
+}
+
+/* A margin is a luxury of width. Under about 1000px the reading column needs
+   every pixel, so the lane collapses and the figures fall back to the line
+   under the message they belong to. */
+@media (max-width: 1000px) {
+  :root {
+    --spacing-lane: 0px;
+  }
+  .lane {
+    display: none;
+  }
+  .meta-inline {
+    display: flex;
+  }
 }
 
 /* The transcript reserves its scrollbar gutter on both sides, always.
@@ -666,7 +774,7 @@ input:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .spine-running,
   .streaming-caret,
-  [data-skin="foundry"] .settles {
+  .settles {
     animation: none;
   }
   .row-actions {
@@ -674,7 +782,7 @@ input:focus-visible {
   }
   /* The skin's transitions are all written against these two, so zeroing them
      here turns off every one of them without hunting for the rules. */
-  [data-skin="foundry"] {
+  {
     --motion-fast: 0ms;
     --motion-base: 0ms;
   }

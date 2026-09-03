@@ -166,40 +166,36 @@ export type ThinkingDisplay = "inline" | "collapsed" | "hidden";
 export type ThinkingPace = "instant" | "readable" | "slow";
 
 /**
- * How the app is built, as opposed to what colour it is.
+ * The palettes in `index.css`. Adding one is a CSS block plus an entry here.
  *
- * Classic is the original: every block outlined as a card, chrome-sized type,
- * no motion. Foundry lets typography and alignment do the structural work,
- * gives the transcript a reading size and a margin for its metadata, and makes
- * state changes visible as they happen. Both are token sets — see `index.css`.
- */
-export type SkinId = "classic" | "foundry";
-
-/**
- * The looks in `index.css`. Adding one is a CSS block plus an entry here.
+ * Most are ports of schemes that already exist — Nord, Gruvbox, Tokyo Night,
+ * Catppuccin and the rest — at their published values. A palette thousands of
+ * people read code in every day has been tested in a way a fresh one has not.
  *
  * `light` is not decoration: syntax highlighting ships both a light and a dark
  * set of token colours in the same markup, and this is what chooses between
- * them. `skin` rides along with the palette rather than being a second control,
- * because "which look am I using" is one question and answering it twice is how
- * you end up with Foundry's structure wearing a palette drawn for cards.
+ * them. It is also what tells the palette's elevation ladder which way up it
+ * goes.
  */
 export const THEMES = [
-  { id: "phosphor", label: "Phosphor", hint: "Amber on graphite", light: false, skin: "classic" },
-  { id: "ember", label: "Ember", hint: "Warm charcoal", light: false, skin: "classic" },
-  { id: "nocturne", label: "Nocturne", hint: "Deep indigo", light: false, skin: "classic" },
-  { id: "moss", label: "Moss", hint: "Green and lime", light: false, skin: "classic" },
-  { id: "mono", label: "Mono", hint: "Neutral, quiet", light: false, skin: "classic" },
-  { id: "paper", label: "Paper", hint: "Light", light: true, skin: "classic" },
-  { id: "foundry-night", label: "Foundry", hint: "Jade on slate", light: false, skin: "foundry" },
-  { id: "foundry-day", label: "Foundry Day", hint: "Jade on white", light: true, skin: "foundry" },
-] as const satisfies ReadonlyArray<{
-  id: string;
-  label: string;
-  hint: string;
-  light: boolean;
-  skin: SkinId;
-}>;
+  { id: "foundry", label: "Foundry", hint: "Jade on slate", light: false },
+  { id: "phosphor", label: "Phosphor", hint: "Amber on graphite", light: false },
+  { id: "tokyo-night", label: "Tokyo Night", hint: "Blue on midnight", light: false },
+  { id: "mocha", label: "Mocha", hint: "Catppuccin", light: false },
+  { id: "nord", label: "Nord", hint: "Arctic blue", light: false },
+  { id: "gruvbox", label: "Gruvbox", hint: "Warm retro", light: false },
+  { id: "rose-pine", label: "Rosé Pine", hint: "Muted rose", light: false },
+  { id: "everforest", label: "Everforest", hint: "Soft green", light: false },
+  { id: "one-dark", label: "One Dark", hint: "Atom", light: false },
+  { id: "dracula", label: "Dracula", hint: "Violet on charcoal", light: false },
+  { id: "kanagawa", label: "Kanagawa", hint: "Ink wash", light: false },
+  { id: "solarized", label: "Solarized", hint: "Precision cyan", light: false },
+  { id: "foundry-day", label: "Foundry Day", hint: "Jade on white", light: true },
+  { id: "latte", label: "Latte", hint: "Catppuccin light", light: true },
+  { id: "solarized-light", label: "Solarized Light", hint: "Warm paper", light: true },
+  { id: "rose-pine-dawn", label: "Rosé Pine Dawn", hint: "Blush light", light: true },
+  { id: "gruvbox-light", label: "Gruvbox Light", hint: "Warm retro light", light: true },
+] as const satisfies ReadonlyArray<{ id: string; label: string; hint: string; light: boolean }>;
 
 export type ThemeId = (typeof THEMES)[number]["id"];
 
@@ -232,7 +228,7 @@ export interface Settings {
 }
 
 export const defaultSettings: Settings = {
-  theme: "phosphor",
+  theme: "foundry",
   terminalFont: "",
   scratchWorkspacePath: "",
   glass: false,
